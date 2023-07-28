@@ -1,0 +1,7 @@
+{
+	"options": "-v --stats -p -C lzma",
+	"repositories": ["~/borg_backup"],
+	"backup_folders": ["~/backup", "~/Documents"],
+	"remote_folders": { "root@raspberrypi.lan": ["/home/pi", "/root"]},
+	"excludes" : ["*.so"]
+}
