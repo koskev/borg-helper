@@ -11,7 +11,7 @@ import json
 
 from collections import defaultdict
 
-from typing import List, Dict
+from typing import List, Dict, Any
 
 def run_cmd(cmd: str, workdir: str = None, print_output = True):
 	print("Calling \"{}\" in dir {}".format(cmd, workdir))
@@ -70,21 +70,50 @@ def borg_test_password(repo: str):
 	return retcode == 0
 
 
-def load_config(config_file):
-	with open(config_file, "r") as f:
-		input_json = json.loads(f.read())
-		return defaultdict(str, input_json)
-	return None
+class BorgConfig:
+	def __init__(self, config_file = None):
+		self.config = None
+		if config_file is not None:
+			self.load_config(config_file)
+
+	def load_config(self, config_file):
+		with open(config_file, "r") as f:
+			input_json = json.loads(f.read())
+			self.config = input_json
+
+	def __get_config(self, name: str, default_value: Any):
+		if name in self.config:
+			return self.config[name]
+		return default_value
+
+	def get_borg_options(self) -> str:
+		return self.__get_config("options", "")
+
+	def get_remote_folders(self) -> Dict[str, List[str]]:
+		return self.__get_config("remote_folders", {})
+
+	def get_repositories(self) -> List[str]:
+		return self.__get_config("repositories", [])
+
+	def get_excludes(self) -> List[str]:
+		return self.__get_config("excludes", [])
+
+	def get_backup_folders(self) -> List[str]:
+		return self.__get_config("backup_folders", [])
+
+	def get_password_options(self) -> Dict[str, str]:
+		return self.__get_config("password", defaultdict(str))
 
 def main():
-	config = load_config("config.json")
+	config = BorgConfig("config.json")
 
 	try:
-		password = get_password(config["password"]["system"], config["password"]["user"])
+		pw_option = config.get_password_options()
+		password = get_password(pw_option["system"], pw_option["user"])
 	except:
 		password = ""
 	os.environ["BORG_PASSPHRASE"] = password
-	for repo in config["repositories"]:
+	for repo in config.get_repositories():
 		if pathlib.Path(repo).exists() == False:
 			print("{} does not exit! Skipping this repo.".format(repo))
 			continue
@@ -94,9 +123,9 @@ def main():
 			os.environ["BORG_PASSPHRASE"] = password
 
 		if borg_test_password(repo):
-			backup_create(config["options"], repo, "{}-{}".format(socket.gethostname(), BACKUP_DATE), config["backup_folders"], config["excludes"])
+			backup_create(config.get_borg_options(), repo, "{}-{}".format(socket.gethostname(), BACKUP_DATE), config.get_backup_folders(), config.get_excludes())
 			backup_prune(repo, prefix=socket.gethostname())
-			backup_create_remote(config["options"], repo, BACKUP_DATE, config["remote_folders"], config["excludes"])
+			backup_create_remote(config.get_borg_options(), repo, BACKUP_DATE, config.get_remote_folders(), config.get_excludes())
 		else:
 			print("Skipping {}".format(repo))
 
