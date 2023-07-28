@@ -101,17 +101,23 @@ class BorgConfig:
 	def get_backup_folders(self) -> List[str]:
 		return self.__get_config("backup_folders", [])
 
-	def get_password_options(self) -> Dict[str, str]:
-		return self.__get_config("password", defaultdict(str))
+	def get_password_store(self) -> Dict[str, str]:
+		return self.__get_config("password_store", defaultdict(str))
+
+	def get_password(self) -> str:
+		return self.__get_config("password", "")
 
 def main():
 	config = BorgConfig("config.json")
 
-	try:
-		pw_option = config.get_password_options()
-		password = get_password(pw_option["system"], pw_option["user"])
-	except:
-		password = ""
+	password = config.get_password()
+
+	if password == "":
+		try:
+			pw_option = config.get_password_store()
+			password = get_password(pw_option["system"], pw_option["user"])
+		except:
+			pass
 	os.environ["BORG_PASSPHRASE"] = password
 	for repo in config.get_repositories():
 		if pathlib.Path(repo).exists() == False:
@@ -121,10 +127,14 @@ def main():
 		while not borg_test_password(repo):
 			password = getpass.getpass("Enter Password for repo {}:".format(repo))
 			os.environ["BORG_PASSPHRASE"] = password
+		print(f"Got password for repo {repo}")
 
 		if borg_test_password(repo):
+			print(f"Creating backup for repo {repo}")
 			backup_create(config.get_borg_options(), repo, "{}-{}".format(socket.gethostname(), BACKUP_DATE), config.get_backup_folders(), config.get_excludes())
+			print(f"Pruning repo {repo}")
 			backup_prune(repo, prefix=socket.gethostname())
+			print(f"Creating backup for repo {config.get_remote_folders()}")
 			backup_create_remote(config.get_borg_options(), repo, BACKUP_DATE, config.get_remote_folders(), config.get_excludes())
 		else:
 			print("Skipping {}".format(repo))
