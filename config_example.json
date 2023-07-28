@@ -3,5 +3,16 @@
 	"repositories": ["~/borg_backup"],
 	"backup_folders": ["~/backup", "~/Documents"],
 	"remote_folders": { "root@raspberrypi.lan": ["/home/pi", "/root"]},
-	"excludes" : ["*.so"]
+	"excludes" : ["*.so"],
+	"password_store": {
+		"system": "borg",
+		"user": "borg_user"
+	},
+	"prune_settings": {
+		"yearly": 1,
+		"monthly" : 6,
+		"weekly": 4,
+		"daily": 7,
+		"hourly": 5
+	}
 }
