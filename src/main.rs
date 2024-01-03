@@ -45,7 +45,7 @@ struct Borg {
 impl Borg {
     fn new(config_path: &str) -> Self {
         let conf_reader = BufReader::new(File::open(config_path).unwrap());
-        let mut obj: Borg = serde_json::from_reader(conf_reader).unwrap();
+        let mut obj: Borg = serde_yaml::from_reader(conf_reader).unwrap();
         obj.date = Local::now();
 
         obj
@@ -254,7 +254,7 @@ fn get_password(service: &str, user: &str) -> Option<String> {
 }
 
 fn main() {
-    let borg = Borg::new("config.json");
+    let borg = Borg::new("config.yaml");
     println!("{:?}", borg);
     let pw = get_password(&borg.password_store.system, &borg.password_store.user).unwrap();
     env::set_var("BORG_PASSPHRASE", pw);
