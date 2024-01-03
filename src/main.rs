@@ -99,29 +99,34 @@ impl Borg {
             }
         }
     }
-    //    def backup_prune(repo: str, keep_daily: int = 7, keep_weekly:int = 4, keep_monthly: int = 6, keep_yearly: int = 0, prefix = ""):
-    //    cmd = "borg prune --list --stats -v {} --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --prefix \"{}\"".format(repo, keep_daily, keep_weekly, keep_monthly, keep_yearly, prefix)
-    //run_cmd(cmd)
 
     fn backup_prune(&self) {
+        let mut prefixes = self.get_remote_prefixes();
+        prefixes.push(self.get_local_prefix());
+        prefixes.iter().for_each(|prefix| {
+                    let cmd = format!("prune --list --stats -v --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --glob-archives '{prefix}*'",
+                                      self.prune_settings.daily,
+                                      self.prune_settings.weekly,
+                                      self.prune_settings.monthly,
+                                      self.prune_settings.yearly);
+                    self.run_every_repo(&cmd);
+                });
+    }
+
+    fn run_every_repo(&self, command: &str) {
         for repo in &self.repositories {
             if Borg::is_repo(repo) {
-                let mut prefixes = self.get_remote_prefixes();
-                prefixes.push(self.get_local_prefix());
-                prefixes.iter().for_each(|prefix| {
-                    let cmd = format!("borg prune --list --stats -v {repo} --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --prefix={prefix}",
-                                  self.prune_settings.daily,
-                                  self.prune_settings.weekly,
-                                  self.prune_settings.monthly,
-                                  self.prune_settings.yearly);
-                    run_cmd_piped(&cmd);
-                });
+                let cmd = format!("borg {} {}", command, repo);
+                run_cmd_piped(&cmd);
             }
         }
     }
 
+    fn compact(&self) {
+        self.run_every_repo("compact");
+    }
+
     fn is_repo(repo: &str) -> bool {
-        //return true;
         let p = Path::new(repo);
         if p.exists() {
             let cmd = format!("borg info {repo}");
