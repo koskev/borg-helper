@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::{env, fs};
 
@@ -25,21 +25,156 @@ struct PasswordStore {
     system: String,
     user: String,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ConditionalExclude {
+    triggers: Vec<String>,
+    excludes: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct BackupTypeSSH {
+    target: String,
+    key: Option<String>,
+}
+
+impl BackupTypeSSH {
+    fn get_hostname(&self) -> String {
+        let host = self.target.split_once("@");
+        match host {
+            Some((_user, hostname)) => hostname.to_string(),
+            // Probably an ssh shortcut
+            None => self.target.clone(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+enum BackupType {
+    #[default]
+    LOCAL,
+    SSH(BackupTypeSSH),
+}
+
+impl BackupType {
+    // TODO: this can probably be done with traits? I don't like it. Probably make config and
+    // actual object separate?
+    fn get_prefix(&self) -> String {
+        match self {
+            BackupType::LOCAL => hostname::get().unwrap().to_str().unwrap().to_string(),
+            BackupType::SSH(ssh) => ssh.get_hostname(),
+        }
+    }
+
+    fn pre_backup(&self) -> Option<String> {
+        match self {
+            BackupType::LOCAL => Some("".to_string()),
+            BackupType::SSH(ssh) => {
+                if ssh.mount() {
+                    Some(ssh.get_mount_path())
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn post_backup(&self) -> bool {
+        match self {
+            BackupType::LOCAL => true,
+            BackupType::SSH(ssh) => ssh.unmount(),
+        }
+    }
+
+    fn get_additional_options(&self) -> Option<String> {
+        match self {
+            BackupType::SSH(_ssh) => Some(format!("--files-cache ctime,size")),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct FolderEntryDetails {
+    #[serde(default)]
+    tags: Vec<String>,
+    path: String,
+}
+
+impl From<String> for FolderEntryDetails {
+    fn from(value: String) -> Self {
+        Self {
+            path: value,
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+enum FolderEntry {
+    Simple(String),
+    Details(FolderEntryDetails),
+}
+
+impl FolderEntry {
+    fn get_path(&self) -> String {
+        match self {
+            FolderEntry::Simple(e) => e.clone(),
+            FolderEntry::Details(e) => e.path.clone(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct BackupGroup {
+    name: String,
+    #[serde(default)]
+    r#type: BackupType,
+    folders: Vec<FolderEntry>,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 struct Borg {
     options: String,
 
     repositories: Vec<String>,
-    backup_folders: Vec<String>,
+    backups: Vec<BackupGroup>,
 
-    remote_folders: RemoteFolders,
     excludes: Vec<String>,
+    conditional_excludes: Vec<ConditionalExclude>,
     password_store: PasswordStore,
 
     prune_settings: PruneSettings,
 
     #[serde(skip)]
     date: DateTime<Local>,
+}
+
+trait RemoteMount {
+    fn mount(&self) -> bool;
+    fn unmount(&self) -> bool;
+    fn get_mount_path(&self) -> String;
+}
+
+impl RemoteMount for BackupTypeSSH {
+    fn mount(&self) -> bool {
+        // TODO: use key
+        let temp_dir = self.get_mount_path();
+        std::fs::create_dir_all(&temp_dir).unwrap_or_default();
+        let cmd = format!("sshfs {}:/ {temp_dir}", self.target);
+        let output = run_cmd(&cmd);
+        output.status.success()
+    }
+
+    fn unmount(&self) -> bool {
+        let cmd = format!("fusermount -u {}", self.get_mount_path());
+        let output = run_cmd(&cmd);
+        output.status.success()
+    }
+
+    fn get_mount_path(&self) -> String {
+        format!("/tmp/backup/{}", self.target)
+    }
 }
 
 impl Borg {
@@ -51,66 +186,64 @@ impl Borg {
         obj
     }
 
-    fn get_local_prefix(&self) -> String {
-        let hostname_os = hostname::get().unwrap();
-        hostname_os.to_str().unwrap().to_string()
-    }
-
-    fn get_remote_prefixes(&self) -> Vec<String> {
-        let hostnames = self
-            .remote_folders
-            .keys()
-            .map(|host| {
-                let (_user, hostname) = host.split_once('@').unwrap();
-                hostname.to_string()
-            })
-            .collect();
-
-        hostnames
-    }
-
     fn backup_create(&self) {
-        // Test repos
         for repo in &self.repositories {
             if Borg::is_repo(repo) {
-                Borg::_backup_create(
-                    &self.options,
-                    repo,
-                    &format!("{}-{}", self.get_local_prefix(), self.date.to_rfc3339()),
-                    &self.backup_folders,
-                    &self.excludes,
-                )
+                for backup_source in &self.backups {
+                    let mount_point = backup_source.r#type.pre_backup();
+                    match mount_point {
+                        Some(mount_point) => {
+                            let folders: Vec<String> = backup_source
+                                .folders
+                                .iter()
+                                .map(|f| {
+                                    PathBuf::from(mount_point.clone())
+                                        .join(f.get_path())
+                                        .to_str()
+                                        .unwrap()
+                                        .to_string()
+                                })
+                                .collect();
+                            // Create Backup
+                            Borg::_backup_create(
+                                &format!(
+                                    "{} {}",
+                                    backup_source
+                                        .r#type
+                                        .get_additional_options()
+                                        .unwrap_or("".to_string()),
+                                    &self.options
+                                ),
+                                repo,
+                                &format!(
+                                    "{}-{}",
+                                    backup_source.r#type.get_prefix(),
+                                    self.date.to_rfc3339()
+                                ),
+                                &folders,
+                                &self.excludes,
+                            )
+                        }
+                        None => (),
+                    }
+                    backup_source.r#type.post_backup();
+                }
             } else {
                 println!("Skipping repo {}", repo);
             }
         }
     }
 
-    fn backup_create_remote(&self) {
-        for repo in &self.repositories {
-            if Borg::is_repo(repo) {
-                Borg::_backup_create_remote(
-                    &self.options,
-                    repo,
-                    &self.date.to_rfc3339(),
-                    &self.remote_folders,
-                    &self.excludes,
-                );
-            }
-        }
-    }
-
     fn backup_prune(&self) {
-        let mut prefixes = self.get_remote_prefixes();
-        prefixes.push(self.get_local_prefix());
+        let prefixes: Vec<String> = self.backups.iter().map(|b| b.r#type.get_prefix()).collect();
         prefixes.iter().for_each(|prefix| {
-                    let cmd = format!("prune --list --stats -v --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --glob-archives '{prefix}*'",
-                                      self.prune_settings.daily,
-                                      self.prune_settings.weekly,
-                                      self.prune_settings.monthly,
-                                      self.prune_settings.yearly);
-                    self.run_every_repo(&cmd);
-                });
+            let cmd = format!("prune --list --stats -v --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --glob-archives '{prefix}*'",
+                              self.prune_settings.daily,
+                              self.prune_settings.weekly,
+                              self.prune_settings.monthly,
+                              self.prune_settings.yearly);
+            self.run_every_repo(&cmd);
+        });
     }
 
     fn run_every_repo(&self, command: &str) {
@@ -146,82 +279,47 @@ impl Borg {
     ) {
         let folder_list_str = folders.join(" ");
         let mut local_excludes = excludes.clone();
-        let mut target_paths = Vec::new();
-        let mut dirs_to_check = folders.clone();
-        let mut visited_dirs = HashSet::new();
-        while let Some(dir) = dirs_to_check.pop() {
-            if let Ok(dir_contents) = fs::read_dir(dir) {
-                for subentry in dir_contents {
-                    let subentry = subentry.unwrap();
-                    let subpath = subentry.path();
-                    let real_path = fs::read_link(&subpath).unwrap_or_else(|_| subpath.clone());
-                    if real_path.is_dir() && !visited_dirs.insert(real_path) {
-                        println!("Already visited {}", subpath.display());
-                        continue;
-                    }
+        //let mut target_paths = Vec::new();
+        //let mut dirs_to_check = folders.clone();
+        //let mut visited_dirs = HashSet::new();
+        //while let Some(dir) = dirs_to_check.pop() {
+        //    if let Ok(dir_contents) = fs::read_dir(dir) {
+        //        for subentry in dir_contents {
+        //            let subentry = subentry.unwrap();
+        //            let subpath = subentry.path();
+        //            let real_path = fs::read_link(&subpath).unwrap_or_else(|_| subpath.clone());
+        //            if real_path.is_dir() && !visited_dirs.insert(real_path) {
+        //                println!("Already visited {}", subpath.display());
+        //                continue;
+        //            }
 
-                    if subpath.is_dir() && !subpath.is_symlink() {
-                        dirs_to_check.push(subpath.to_string_lossy().to_string());
-                    } else if subpath.ends_with("Cargo.toml") {
-                        let target_path =
-                            Path::new(&subpath).parent().unwrap().join("target").clone();
-                        if target_path.exists() {
-                            println!("#### ignoring {target_path:?}");
-                            target_paths.push(target_path);
-                        }
-                    }
-                }
-            }
-        }
+        //            if subpath.is_dir() && !subpath.is_symlink() {
+        //                dirs_to_check.push(subpath.to_string_lossy().to_string());
+        //            } else if subpath.ends_with("Cargo.toml") {
+        //                let target_path =
+        //                    Path::new(&subpath).parent().unwrap().join("target").clone();
+        //                if target_path.exists() {
+        //                    println!("#### ignoring {target_path:?}");
+        //                    target_paths.push(target_path);
+        //                }
+        //            }
+        //        }
+        //    }
+        //}
 
-        local_excludes.extend(
-            target_paths
-                .into_iter()
-                .map(|p| p.to_string_lossy().to_string()),
-        );
+        //local_excludes.extend(
+        //    target_paths
+        //        .into_iter()
+        //        .map(|p| p.to_string_lossy().to_string()),
+        //);
 
         let folder_exclude_str: String = local_excludes
             .into_iter()
             .map(|val| format!(" --exclude {val}"))
             .collect();
 
-        let cmd = format!("borg create {options} {repo}::{name} {folder_list_str} {folder_exclude_str} --exclude-if-present .nobackup");
+        let cmd = format!("borg create {options} {repo}::{name} {folder_list_str} {folder_exclude_str} --exclude-if-present .nobackup --exclude-if-present CACHEDIR.TAG");
         let _res = run_cmd_piped(&cmd);
-    }
-
-    fn _backup_create_remote(
-        options: &str,
-        repo: &str,
-        name: &str,
-        remote_folders: &RemoteFolders,
-        excludes: &Vec<String>,
-    ) {
-        for (host, folders) in remote_folders.iter() {
-            let temp_dir = format!("/tmp/backup/{host}");
-            let (_user, hostname) = host.split_once('@').unwrap();
-            std::fs::create_dir_all(&temp_dir).unwrap_or_default();
-            let cmd = format!("sshfs {host}:/ {temp_dir}");
-            let output = run_cmd(&cmd);
-            let backup_dirs = folders
-                .iter()
-                .map(|folder| {
-                    let new_path = temp_dir.clone() + folder;
-                    Path::new(&new_path).to_str().unwrap().to_string()
-                })
-                .collect();
-            println!("Output dirs: {:?}", backup_dirs);
-            if output.status.success() {
-                Borg::_backup_create(
-                    &format!("--files-cache ctime,size {options}"),
-                    repo,
-                    &format!("{hostname}-{name}"),
-                    &backup_dirs,
-                    excludes,
-                );
-                let cmd = format!("fusermount -u {temp_dir}");
-                run_cmd(&cmd);
-            }
-        }
     }
 }
 
@@ -264,6 +362,5 @@ fn main() {
     let pw = get_password(&borg.password_store.system, &borg.password_store.user).unwrap();
     env::set_var("BORG_PASSPHRASE", pw);
     borg.backup_create();
-    borg.backup_create_remote();
     borg.backup_prune();
 }
