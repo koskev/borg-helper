@@ -1,12 +1,14 @@
+use std::error::Error;
 use std::fmt::Debug;
-use std::fs::File;
-use std::io::{stdin, BufReader};
+use std::fs::{self, File};
+use std::io::BufReader;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::str::FromStr;
 
 use chrono::{DateTime, Local};
+use clap::Parser;
 use secstr::SecUtf8;
 use serde::Deserialize;
 use serde::Serialize;
@@ -96,6 +98,9 @@ struct BackupTypeSSH {
     key: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct BackupTypeLocal {}
+
 impl BackupTypeSSH {
     fn get_hostname(&self) -> String {
         let host = self.target.split_once("@");
@@ -107,66 +112,96 @@ impl BackupTypeSSH {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
-#[serde(tag = "type")]
-enum BackupType {
-    #[default]
-    #[serde(rename = "local")]
-    LOCAL,
-    #[serde(rename = "ssh")]
-    SSH(BackupTypeSSH),
+#[typetag::serde]
+trait BackupType: Debug {
+    fn pre_backup(&self) -> bool;
+    fn post_backup(&self) -> bool;
+    fn get_hostname(&self) -> String;
+    // TODO: I don't like this. Just returning a Vec<impl Folder> would be nice
+    // Vec<Box<dyn Folder>> won't work as well :/
+    fn get_folders(&self) -> Vec<Box<dyn Folder>>;
+    fn get_additional_options(&self) -> String {
+        String::new()
+    }
 }
 
-impl BackupType {
-    // TODO: this can probably be done with traits? I don't like it. Probably make config and
-    // actual object separate?
-    fn get_prefix(&self) -> String {
-        match self {
-            BackupType::LOCAL => hostname::get().unwrap().to_str().unwrap().to_string(),
-            BackupType::SSH(ssh) => ssh.get_hostname(),
-        }
-    }
+trait Folder {
+    fn get_size(&self) -> Result<u64, Box<dyn Error>>;
+    fn get_path(&self) -> PathBuf;
+}
 
-    fn pre_backup(&self) -> Option<String> {
-        match self {
-            BackupType::LOCAL => Some("".to_string()),
-            BackupType::SSH(ssh) => {
-                if ssh.mount() {
-                    Some(ssh.get_mount_path())
-                } else {
-                    None
-                }
-            }
-        }
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+struct LocalFolder {
+    path: PathBuf,
+}
+
+#[serde_with::serde_as]
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct LocalBackup {
+    #[serde_as(as = "Vec<PickFirst<(_, DisplayFromStr)>>")]
+    folders: Vec<FolderEntry<LocalFolder>>,
+}
+
+#[typetag::serde]
+impl BackupType for LocalBackup {
+    fn pre_backup(&self) -> bool {
+        true
     }
 
     fn post_backup(&self) -> bool {
-        match self {
-            BackupType::LOCAL => true,
-            BackupType::SSH(ssh) => ssh.unmount(),
-        }
+        true
     }
 
-    fn get_additional_options(&self) -> Option<String> {
-        match self {
-            BackupType::SSH(_ssh) => Some(format!("--files-cache ctime,size")),
-            _ => None,
+    fn get_hostname(&self) -> String {
+        hostname::get().unwrap().to_str().unwrap().to_string()
+    }
+
+    fn get_folders(&self) -> Vec<Box<dyn Folder>> {
+        let mut v: Vec<Box<dyn Folder>> = vec![];
+        for f in &self.folders {
+            // XXX: Map doesn't work?
+            v.push(Box::new(f.folder.clone()));
         }
+        v
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct FolderEntry {
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+struct FolderEntry<T>
+where
+    T: Folder,
+{
     #[serde(default)]
     tags: Vec<String>,
-    path: String,
+    folder: T,
 }
 
-impl FromStr for FolderEntry {
+impl Folder for LocalFolder {
+    fn get_size(&self) -> Result<u64, Box<dyn Error>> {
+        Ok(0)
+    }
+
+    fn get_path(&self) -> PathBuf {
+        self.path.clone()
+    }
+}
+
+impl FromStr for LocalFolder {
+    type Err = Void;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self {
+            path: PathBuf::from_str(s).unwrap(),
+        })
+    }
+}
+
+impl FromStr for FolderEntry<LocalFolder> {
     type Err = Void;
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         Ok(Self {
-            path: value.to_string(),
+            folder: LocalFolder {
+                path: PathBuf::from_str(value).unwrap(),
+            },
             ..Default::default()
         })
     }
@@ -177,10 +212,7 @@ impl FromStr for FolderEntry {
 struct BackupGroup {
     name: String,
     #[serde(default, flatten)]
-    r#type: BackupType,
-    //#[serde(deserialize_with = "string_or_struct_vec")]
-    #[serde_as(as = "Vec<PickFirst<(_, DisplayFromStr)>>")]
-    folders: Vec<FolderEntry>,
+    r#type: Box<dyn BackupType>,
 }
 
 struct SecrectString(SecUtf8);
@@ -344,46 +376,34 @@ impl Borg {
             }
             drop(password);
             if repo.is_valid() {
+                println!("Processing {}", repo.path);
+                println!("{:?}", self.backups);
                 for backup_source in &self.backups {
-                    let mount_point = backup_source.r#type.pre_backup();
-                    match mount_point {
-                        Some(mount_point) => {
-                            let folders: Vec<String> = backup_source
-                                .folders
-                                .iter()
-                                // Filter tags
-                                .filter(|f| repo.tags.iter().any(|item| f.tags.contains(item)))
-                                .map(|f| {
-                                    PathBuf::from(mount_point.clone())
-                                        .join(f.path.clone())
-                                        .to_str()
-                                        .unwrap()
-                                        .to_string()
-                                })
-                                .collect();
-                            // Create Backup
-                            if folders.len() > 0 {
-                                Borg::_backup_create(
-                                    &format!(
-                                        "{} {}",
-                                        backup_source
-                                            .r#type
-                                            .get_additional_options()
-                                            .unwrap_or("".to_string()),
-                                        &options.cmdline.clone().unwrap_or_default()
-                                    ),
-                                    &repo.path,
-                                    &format!(
-                                        "{}-{}",
-                                        backup_source.r#type.get_prefix(),
-                                        self.date.to_rfc3339()
-                                    ),
-                                    &folders,
-                                    &self.excludes,
-                                )
-                            }
+                    if backup_source.r#type.pre_backup() {
+                        let folders: Vec<PathBuf> = backup_source
+                            .r#type
+                            .get_folders()
+                            .iter()
+                            .map(|f| f.get_path())
+                            .collect();
+                        // Create Backup
+                        if folders.len() > 0 {
+                            Borg::_backup_create(
+                                &format!(
+                                    "{} {}",
+                                    backup_source.r#type.get_additional_options(),
+                                    &options.cmdline.clone().unwrap_or_default()
+                                ),
+                                &repo.path,
+                                &format!(
+                                    "{}-{}",
+                                    backup_source.r#type.get_hostname(),
+                                    self.date.to_rfc3339()
+                                ),
+                                &folders,
+                                &self.excludes,
+                            )
                         }
-                        None => (),
                     }
                     backup_source.r#type.post_backup();
                 }
@@ -394,7 +414,11 @@ impl Borg {
     }
 
     fn backup_prune(&self) {
-        let prefixes: Vec<String> = self.backups.iter().map(|b| b.r#type.get_prefix()).collect();
+        let prefixes: Vec<String> = self
+            .backups
+            .iter()
+            .map(|b| b.r#type.get_hostname())
+            .collect();
         prefixes.iter().for_each(|prefix| {
             //let mut keep_vec = vec![];
             //let cmd = format!("prune --list --stats -v --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --glob-archives '{prefix}*'",
@@ -434,10 +458,11 @@ impl Borg {
         options: &str,
         repo: &str,
         name: &str,
-        folders: &Vec<String>,
+        folders: &Vec<PathBuf>,
         excludes: &Vec<String>,
     ) {
-        let folder_list_str = folders.join(" ");
+        let folder_vec_str: Vec<&str> = folders.iter().filter_map(|f| f.to_str()).collect();
+        let folders_str = folder_vec_str.join(" ");
         let mut local_excludes = excludes.clone();
         //let mut target_paths = Vec::new();
         //let mut dirs_to_check = folders.clone();
@@ -478,8 +503,27 @@ impl Borg {
             .map(|val| format!(" --exclude {val}"))
             .collect();
 
-        let cmd = format!("borg create {options} {repo}::{name} {folder_list_str} {folder_exclude_str} --exclude-if-present .nobackup --exclude-if-present CACHEDIR.TAG");
+        let cmd = format!("borg create {options} {repo}::{name} {folders_str} {folder_exclude_str} --exclude-if-present .nobackup --exclude-if-present CACHEDIR.TAG");
         let _res = run_cmd_piped(&cmd);
+    }
+
+    fn get_sizes(&self) {
+        for backup_source in &self.backups {
+            let folders = backup_source.r#type.get_folders();
+            // TODO: fix multiple mount calls. Fix auto mount stuff
+            for folder in folders {
+                let size = folder.get_size().unwrap_or_default();
+                let size_str = byte_unit::Byte::from_u64(size)
+                    .get_appropriate_unit(byte_unit::UnitType::Binary);
+                println!(
+                    "{}: {:.2}",
+                    folder.get_path().to_str().unwrap_or_default(),
+                    size_str
+                );
+            }
+
+            backup_source.r#type.post_backup();
+        }
     }
 }
 
@@ -507,22 +551,36 @@ fn run_cmd(cmd: &str) -> Output {
     output
 }
 
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    #[arg(short, long)]
+    show_size: bool,
+}
+
 fn main() {
+    let cli = Cli::parse();
     let borg = Borg::from_file("config.yaml");
     println!("{:?}", borg);
-    //let pw = get_password(&borg.password_store.system, &borg.password_store.user).unwrap();
-    //env::set_var("BORG_PASSPHRASE", pw);
-    borg.backup_create();
-    borg.backup_prune();
+    if cli.show_size {
+        borg.get_sizes();
+    } else {
+        borg.backup_create();
+        borg.backup_prune();
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
+    use std::{path::PathBuf, str::FromStr};
 
+    use more_asserts::assert_ge;
     use secstr::SecUtf8;
 
-    use crate::{BackupType, Borg, Password, PruneSettings, Repository};
+    use crate::{
+        BackupGroup, BackupType, BackupTypeSSH, Borg, FolderEntry, LocalFolder, Password,
+        PruneSettings, Repository,
+    };
 
     #[test]
     fn test_from_str() {
@@ -543,25 +601,16 @@ mod test {
 
         let borg = Borg::from_str(config);
         assert_eq!(borg.backups.len(), 2);
-        match &borg.backups[0].r#type {
-            BackupType::SSH(ssh) => {
-                assert_eq!(ssh.target, "user@server.de");
-            }
-            _ => assert!(false),
-        }
+        // SSH
+        assert_ne!(borg.backups[0].r#type.get_additional_options().len(), 0);
 
-        match &borg.backups[1].r#type {
-            BackupType::LOCAL => {
-                assert!(true);
-            }
-            _ => assert!(false),
-        }
+        // LOCAL
+        assert_eq!(borg.backups[1].r#type.get_additional_options().len(), 0);
+        let local_folders = borg.backups[1].r#type.get_folders();
 
-        assert_eq!(borg.backups[1].folders.len(), 2);
+        assert_eq!(local_folders.len(), 2);
 
-        assert!(borg.backups[1].folders[1]
-            .tags
-            .contains(&"important".to_string()));
+        assert!(local_folders[1].tags.contains(&"important".to_string()));
 
         assert_eq!(borg.repository.repositories.len(), 3);
         assert!(borg.repository.options.prune.is_some());
