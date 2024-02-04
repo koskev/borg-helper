@@ -15,7 +15,7 @@ use serde_with::{DisplayFromStr, PickFirst};
 use utils::folder::BackupGroup;
 use void::Void;
 
-mod targets;
+mod sources;
 mod utils;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
