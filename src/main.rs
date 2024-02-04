@@ -280,18 +280,21 @@ impl Borg {
             drop(password);
             if repo.is_valid() {
                 println!("Processing {}", repo.path);
-                println!("{:?}", self.backups);
                 for backup_source in &self.backups {
-                    if backup_source.r#type.pre_backup() {
-                        let folders: Vec<PathBuf> = backup_source
-                            .r#type
-                            .get_folders()
-                            .iter()
+                    println!("Processing source {}", backup_source.name);
+                    let mut folders = backup_source.r#type.get_folders();
+                    if repo.tags.len() > 0 {
+                        folders = folders
+                            .into_iter()
                             .filter(|f| repo.tags.iter().any(|item| f.tags.contains(item)))
-                            .map(|f| f.folder.get_path())
                             .collect();
+                    }
+                    if backup_source.r#type.pre_backup() {
+                        let paths: Vec<PathBuf> =
+                            folders.iter().map(|f| f.folder.get_path()).collect();
+                        println!("Backing up folders {:?}", paths);
                         // Create Backup
-                        if folders.len() > 0 {
+                        if folders.len() > 0 && false {
                             Borg::_backup_create(
                                 &format!(
                                     "{} {}",
@@ -304,7 +307,7 @@ impl Borg {
                                     backup_source.r#type.get_hostname(),
                                     self.date.to_rfc3339()
                                 ),
-                                &folders,
+                                &paths,
                                 &self.excludes,
                             )
                         }
