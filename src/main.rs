@@ -1,6 +1,5 @@
-use std::error::Error;
 use std::fmt::Debug;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::BufReader;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -13,7 +12,11 @@ use secstr::SecUtf8;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_with::{DisplayFromStr, PickFirst};
+use utils::folder::BackupGroup;
 use void::Void;
+
+mod targets;
+mod utils;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 struct PruneSettings {
@@ -110,160 +113,6 @@ impl BackupTypeSSH {
             None => self.target.clone(),
         }
     }
-}
-
-#[typetag::serde(tag = "type")]
-trait BackupType: Debug {
-    fn pre_backup(&self) -> bool;
-    fn post_backup(&self) -> bool;
-    fn get_hostname(&self) -> String;
-    // TODO: I don't like this. Just returning a Vec<impl Folder> would be nice
-    // Vec<Box<dyn Folder>> won't work as well :/
-    fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>>;
-    fn get_additional_options(&self) -> String {
-        String::new()
-    }
-}
-
-trait Folder {
-    fn get_size(&self) -> Result<u64, Box<dyn Error>>;
-    fn get_path(&self) -> PathBuf;
-}
-
-impl<F: Folder + ?Sized> Folder for Box<F> {
-    fn get_size(&self) -> Result<u64, Box<dyn Error>> {
-        (**self).get_size()
-    }
-
-    fn get_path(&self) -> PathBuf {
-        (**self).get_path()
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
-struct LocalFolder {
-    path: PathBuf,
-}
-
-#[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct LocalBackup {
-    #[serde_as(as = "Vec<PickFirst<(_, DisplayFromStr)>>")]
-    folders: Vec<FolderEntry<LocalFolder>>,
-}
-
-#[typetag::serde(name = "local")]
-impl BackupType for LocalBackup {
-    fn pre_backup(&self) -> bool {
-        true
-    }
-
-    fn post_backup(&self) -> bool {
-        true
-    }
-
-    fn get_hostname(&self) -> String {
-        hostname::get().unwrap().to_str().unwrap().to_string()
-    }
-
-    fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>> {
-        let mut v: Vec<FolderEntry<Box<dyn Folder>>> = vec![];
-        for f in &self.folders {
-            let bf: Box<dyn Folder> = Box::new(f.folder.clone());
-            let fe = FolderEntry {
-                tags: f.tags.clone(),
-                folder: bf,
-            };
-            v.push(fe);
-        }
-        v
-    }
-}
-
-#[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct SSHBackup {
-    #[serde_as(as = "Vec<PickFirst<(_, DisplayFromStr)>>")]
-    folders: Vec<FolderEntry<LocalFolder>>,
-}
-
-#[typetag::serde(name = "ssh")]
-impl BackupType for SSHBackup {
-    fn pre_backup(&self) -> bool {
-        true
-    }
-
-    fn post_backup(&self) -> bool {
-        true
-    }
-
-    fn get_hostname(&self) -> String {
-        hostname::get().unwrap().to_str().unwrap().to_string()
-    }
-
-    fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>> {
-        let mut v: Vec<FolderEntry<Box<dyn Folder>>> = vec![];
-        for f in &self.folders {
-            let bf: Box<dyn Folder> = Box::new(f.folder.clone());
-            let fe = FolderEntry {
-                tags: f.tags.clone(),
-                folder: bf,
-            };
-            v.push(fe);
-        }
-        v
-    }
-}
-
-#[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
-struct FolderEntry<T>
-where
-    T: Folder,
-{
-    #[serde(default)]
-    tags: Vec<String>,
-    #[serde(flatten)]
-    folder: T,
-}
-
-impl Folder for LocalFolder {
-    fn get_size(&self) -> Result<u64, Box<dyn Error>> {
-        Ok(0)
-    }
-
-    fn get_path(&self) -> PathBuf {
-        self.path.clone()
-    }
-}
-
-impl FromStr for LocalFolder {
-    type Err = Void;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self {
-            path: PathBuf::from_str(s).unwrap(),
-        })
-    }
-}
-
-impl FromStr for FolderEntry<LocalFolder> {
-    type Err = Void;
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        Ok(Self {
-            folder: LocalFolder {
-                path: PathBuf::from_str(value).unwrap(),
-            },
-            ..Default::default()
-        })
-    }
-}
-
-#[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug)]
-struct BackupGroup {
-    name: String,
-    #[serde(default, flatten)]
-    r#type: Box<dyn BackupType>,
 }
 
 struct SecrectString(SecUtf8);
@@ -627,16 +476,11 @@ fn main() {
 
 #[cfg(test)]
 mod test {
-    use std::{fs, path::PathBuf, str::FromStr};
+    use std::str::FromStr;
 
     use include_dir::{include_dir, Dir};
-    use more_asserts::assert_ge;
-    use secstr::SecUtf8;
 
-    use crate::{
-        BackupGroup, BackupType, BackupTypeSSH, Borg, FolderEntry, LocalFolder, Password,
-        PruneSettings, Repository,
-    };
+    use crate::{Borg, Password, PruneSettings, Repository};
 
     #[test]
     fn test_from_str() {
@@ -668,7 +512,7 @@ mod test {
         println!("{:#?}", borg);
         assert_eq!(borg.backups.len(), 2);
         // SSH
-        //assert_ne!(borg.backups[0].r#type.get_additional_options().len(), 0);
+        assert_ne!(borg.backups[0].r#type.get_additional_options().len(), 0);
 
         // LOCAL
         assert_eq!(borg.backups[1].r#type.get_additional_options().len(), 0);
