@@ -95,26 +95,6 @@ struct ConditionalExclude {
     excludes: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct BackupTypeSSH {
-    target: String,
-    key: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct BackupTypeLocal {}
-
-impl BackupTypeSSH {
-    fn get_hostname(&self) -> String {
-        let host = self.target.split_once("@");
-        match host {
-            Some((_user, hostname)) => hostname.to_string(),
-            // Probably an ssh shortcut
-            None => self.target.clone(),
-        }
-    }
-}
-
 struct SecrectString(SecUtf8);
 
 impl Deref for SecrectString {
@@ -212,33 +192,6 @@ struct Borg {
 
     #[serde(skip)]
     date: DateTime<Local>,
-}
-
-trait RemoteMount {
-    fn mount(&self) -> bool;
-    fn unmount(&self) -> bool;
-    fn get_mount_path(&self) -> String;
-}
-
-impl RemoteMount for BackupTypeSSH {
-    fn mount(&self) -> bool {
-        // TODO: use key
-        let temp_dir = self.get_mount_path();
-        std::fs::create_dir_all(&temp_dir).unwrap_or_default();
-        let cmd = format!("sshfs {}:/ {temp_dir}", self.target);
-        let output = run_cmd(&cmd);
-        output.status.success()
-    }
-
-    fn unmount(&self) -> bool {
-        let cmd = format!("fusermount -u {}", self.get_mount_path());
-        let output = run_cmd(&cmd);
-        output.status.success()
-    }
-
-    fn get_mount_path(&self) -> String {
-        format!("/tmp/backup/{}", self.target)
-    }
 }
 
 impl Borg {
