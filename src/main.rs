@@ -661,8 +661,8 @@ mod test {
     }
 
     #[test]
-    fn test_config() {
-        let config = include_str!("../config.yaml.example");
+    fn test_full_config() {
+        let config = include_str!("../test/configs/99-full.yaml");
 
         let borg = Borg::from_str(config);
         println!("{:#?}", borg);
