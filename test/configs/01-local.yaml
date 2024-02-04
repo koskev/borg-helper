@@ -1,0 +1,12 @@
+backups:
+  - name: local
+    type: local
+    folders:
+    - /etc
+    - path: /home/important
+      tags:
+        - important
+repository:
+  repositories:
+  - /path/to/backup
+

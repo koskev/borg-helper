@@ -1,0 +1,11 @@
+backups:
+  - name: remote
+    type: ssh
+    target: user@server.de
+    folders:
+      - /root
+      - /etc
+repository:
+  repositories:
+  - /path/to/backup
+
