@@ -247,7 +247,7 @@ impl Borg {
                             folders.iter().map(|f| f.folder.get_path()).collect();
                         println!("Backing up folders {:?}", paths);
                         // Create Backup
-                        if folders.len() > 0 && false {
+                        if folders.len() > 0 {
                             Borg::_backup_create(
                                 &format!(
                                     "{} {}",
