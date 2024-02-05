@@ -1,0 +1,47 @@
+backups:
+  - name: remote
+    type: ssh
+    target: user@server.de
+    folders:
+      - /root
+      - /etc
+  - name: local
+    type: local
+    folders:
+    - /etc
+    - path: /home/important
+      tags:
+        - important
+excludes:
+- '*.fit'
+conditional_excludes:
+  - triggers:
+    - "Cargo.toml"
+    excludes:
+    - "target"
+
+repository:
+  options:
+    cmdline: -v --stats -p -C lzma
+    prune:
+      daily: 7
+      monthly: 6
+      weekly: 4
+    password:
+      type: password_store
+      system: borg
+      user: borg_user
+  repositories:
+  - /path/to/backup
+  - path: /mnt/backup
+    password:
+      type: plain
+      value: mypassword
+    prune:
+      weekly: 2
+  - path: ssh://user@limited-storage.com/./repo
+    prune:
+      hourly: 1
+    tags:
+      - important
+
