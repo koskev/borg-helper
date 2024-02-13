@@ -6,7 +6,10 @@ use void::Void;
 
 use crate::{
     run_cmd,
-    utils::folder::{BackupType, Folder, FolderEntry},
+    utils::{
+        folder::{BackupType, Folder, FolderEntry},
+        mountable::Mountable,
+    },
 };
 
 #[serde_with::serde_as]
@@ -17,13 +20,7 @@ struct SSHBackup {
     folders: Vec<FolderEntry<SSHFolder>>,
 }
 
-trait RemoteMount {
-    fn mount(&self) -> bool;
-    fn unmount(&self) -> bool;
-    fn get_mount_path(&self) -> String;
-}
-
-impl RemoteMount for SSHBackup {
+impl Mountable for SSHBackup {
     fn mount(&self) -> bool {
         // TODO: use key
         let temp_dir = self.get_mount_path();

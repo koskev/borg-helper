@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::str::FromStr;
 
 use chrono::{DateTime, Local};
@@ -398,6 +398,10 @@ fn run_cmd_piped(cmd: &str) -> Output {
         .expect("failed to execute process");
 
     output
+}
+
+fn run_cmd_background(cmd: &str) -> Result<Child, std::io::Error> {
+    Command::new("sh").arg("-c").arg(cmd).spawn()
 }
 
 fn run_cmd(cmd: &str) -> Output {
