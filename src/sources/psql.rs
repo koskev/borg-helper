@@ -1,18 +1,14 @@
 use std::{
     cell::RefCell,
     error::Error,
-    fmt::Display,
     fs::{self, File},
     io::Write,
     path::PathBuf,
-    process::{Child, ExitStatus},
-    str::FromStr,
-    thread, time,
+    process::Child,
 };
 
+use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, PickFirst};
-use void::Void;
 
 use crate::{
     run_cmd, run_cmd_background,
@@ -30,10 +26,29 @@ struct PsqlBackup {
     host: Option<String>,
     k8s_deployment: Option<String>,
     #[serde(default)]
-    tags: Vec<String>,
+    tags: VeMountablec<String>,
 
     #[serde(skip)]
     proxy_process: RefCell<Option<Child>>,
+}
+
+fn is_port_listening(port: u16) -> bool {
+    let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
+    let proto_flags = ProtocolFlags::TCP;
+    let sockets_info = get_sockets_info(af_flags, proto_flags);
+    println!("Checking if port {port} is listening");
+    match sockets_info {
+        Ok(sockets_info) => {
+            let sockets = sockets_info.iter().find(|s| match &s.protocol_socket_info {
+                ProtocolSocketInfo::Tcp(tcp) => {
+                    tcp.state == TcpState::Listen && tcp.local_port == port
+                }
+                _ => false,
+            });
+            sockets.is_some()
+        }
+        Err(_) => false,
+    }
 }
 
 impl Mountable for PsqlBackup {
@@ -48,12 +63,25 @@ impl Mountable for PsqlBackup {
                     "kubectl port-forward {} {}:{}",
                     deployment, self.port, self.port
                 );
-                // TODO: actually check for the port to be open
-                //
                 let child = run_cmd_background(&cmd);
-                thread::sleep(time::Duration::from_millis(500));
                 match child {
-                    Ok(child) => *self.proxy_process.borrow_mut() = Some(child),
+                    Ok(mut child) => {
+                        // Wait for proxy to run
+                        while !is_port_listening(self.port) {
+                            // Check if child returned or threw an error. If not -> Program is
+                            // still running and we can wait for the port
+                            let child_ret = child.try_wait();
+                            match child_ret {
+                                Ok(ret) => {
+                                    if ret.is_some() {
+                                        return false;
+                                    }
+                                }
+                                Err(_) => return false,
+                            }
+                        }
+                        *self.proxy_process.borrow_mut() = Some(child)
+                    }
                     Err(e) => {
                         println!("Failed to create k8s proxy: {}", e);
                         return false;
@@ -67,7 +95,6 @@ impl Mountable for PsqlBackup {
             self.user, self.password, host, self.port
         );
         let output = run_cmd(&cmd);
-        println!("{}", output.status.success());
         if !output.status.success() {
             println!(
                 "Failed to dump database: {}",
@@ -93,9 +120,8 @@ impl Mountable for PsqlBackup {
         if let Some(ref mut child) = *self.proxy_process.borrow_mut() {
             child.kill().unwrap();
         }
-        //let res = fs::remove_file(self.get_mount_path());
-        //res.is_ok()
-        true
+        let res = fs::remove_file(self.get_mount_path());
+        res.is_ok()
     }
 
     fn get_mount_path(&self) -> String {
@@ -127,7 +153,6 @@ impl BackupType for PsqlBackup {
         println!("Getting folders");
         let mut v: Vec<FolderEntry<Box<dyn Folder>>> = vec![];
         let dyn_folder: Box<dyn Folder> = Box::new(PsqlFolder::new(&self.get_mount_path()));
-        // TODO: implement tags
         let fe = FolderEntry {
             tags: self.tags.clone(),
             folder: dyn_folder,

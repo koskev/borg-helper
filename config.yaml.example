@@ -12,6 +12,14 @@ backups:
     - path: /home/important
       tags:
         - important
+  - name: k8s_psql
+    type: psql
+    user: postgres
+    password: mycoolpsqlpassword
+    port: 5432
+    k8s_deployment: postgresql-deployment-0
+    tags:
+      - important
 excludes:
 - '*.fit'
 conditional_excludes:
