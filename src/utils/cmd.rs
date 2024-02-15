@@ -1,7 +1,9 @@
 use std::process::{Command, Output, Stdio};
 
+use log::info;
+
 pub fn run_cmd(cmd: &str) -> Output {
-    println!("Calling \"{}\"", cmd);
+    info!("Calling \"{}\"", cmd);
     let output = Command::new("sh")
         .arg("-c")
         .arg(cmd)
@@ -12,7 +14,7 @@ pub fn run_cmd(cmd: &str) -> Output {
 }
 
 pub fn run_cmd_piped(cmd: &str) -> Output {
-    println!("Calling piped \"{}\"", cmd);
+    info!("Calling piped \"{}\"", cmd);
     let output = Command::new("sh")
         .arg("-c")
         .arg(cmd)

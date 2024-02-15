@@ -8,10 +8,12 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Local};
 use clap::Parser;
+use log::{debug, info, warn, LevelFilter};
 use secstr::SecUtf8;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_with::{DisplayFromStr, PickFirst};
+use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 use utils::folder::BackupGroup;
 use void::Void;
 
@@ -232,9 +234,9 @@ impl Borg {
             }
             drop(password);
             if repo.is_valid() {
-                println!("Processing {}", repo.path);
+                info!("Processing {}", repo.path);
                 for backup_source in &self.backups {
-                    println!("Processing source {}", backup_source.name);
+                    info!("Processing source {}", backup_source.name);
                     let mut folders = backup_source.r#type.get_folders();
                     if repo.tags.len() > 0 {
                         folders = folders
@@ -245,7 +247,7 @@ impl Borg {
                     if backup_source.r#type.pre_backup() {
                         let paths: Vec<PathBuf> =
                             folders.iter().map(|f| f.folder.get_path()).collect();
-                        println!("Backing up folders {:?}", paths);
+                        info!("Backing up folders {:?}", paths);
                         // Create Backup
                         if folders.len() > 0 {
                             Borg::_backup_create(
@@ -268,7 +270,7 @@ impl Borg {
                     backup_source.r#type.post_backup();
                 }
             } else {
-                println!("Skipping repo {}", repo.path);
+                warn!("Skipping repo {}", repo.path);
             }
         }
     }
@@ -375,7 +377,7 @@ impl Borg {
                 let size = folder_entry.folder.get_size().unwrap_or_default();
                 let size_str = byte_unit::Byte::from_u64(size)
                     .get_appropriate_unit(byte_unit::UnitType::Binary);
-                println!(
+                info!(
                     "{}: {:.2}",
                     folder_entry.folder.get_path().to_str().unwrap_or_default(),
                     size_str
@@ -388,7 +390,7 @@ impl Borg {
 }
 
 fn run_cmd_piped(cmd: &str) -> Output {
-    println!("Calling piped \"{}\"", cmd);
+    info!("Calling piped \"{}\"", cmd);
     let output = Command::new("sh")
         .arg("-c")
         .arg(cmd)
@@ -405,7 +407,7 @@ fn run_cmd_background(cmd: &str) -> Result<Child, std::io::Error> {
 }
 
 fn run_cmd(cmd: &str) -> Output {
-    println!("Calling \"{}\"", cmd);
+    info!("Calling \"{}\"", cmd);
     let output = Command::new("sh")
         .arg("-c")
         .arg(cmd)
@@ -423,9 +425,16 @@ struct Cli {
 }
 
 fn main() {
+    TermLogger::init(
+        LevelFilter::Trace,
+        Config::default(),
+        TerminalMode::Stdout,
+        ColorChoice::Auto,
+    )
+    .unwrap();
     let cli = Cli::parse();
     let borg = Borg::from_file("config.yaml");
-    println!("{:?}", borg);
+    debug!("{:?}", borg);
     if cli.show_size {
         borg.get_sizes();
     } else {

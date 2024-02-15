@@ -7,6 +7,7 @@ use std::{
     process::Child,
 };
 
+use log::{debug, error, info};
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
 use serde::{Deserialize, Serialize};
 
@@ -36,7 +37,7 @@ fn is_port_listening(port: u16) -> bool {
     let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
     let proto_flags = ProtocolFlags::TCP;
     let sockets_info = get_sockets_info(af_flags, proto_flags);
-    println!("Checking if port {port} is listening");
+    debug!("Checking if port {port} is listening");
     match sockets_info {
         Ok(sockets_info) => {
             let sockets = sockets_info.iter().find(|s| match &s.protocol_socket_info {
@@ -58,7 +59,7 @@ impl Mountable for PsqlBackup {
         // Create proxy connection
         match &self.k8s_deployment {
             Some(deployment) => {
-                println!("Starting proxy...");
+                info!("Starting proxy...");
                 let cmd = format!(
                     "kubectl port-forward {} {}:{}",
                     deployment, self.port, self.port
@@ -83,7 +84,7 @@ impl Mountable for PsqlBackup {
                         *self.proxy_process.borrow_mut() = Some(child)
                     }
                     Err(e) => {
-                        println!("Failed to create k8s proxy: {}", e);
+                        error!("Failed to create k8s proxy: {}", e);
                         return false;
                     }
                 }
@@ -96,7 +97,7 @@ impl Mountable for PsqlBackup {
         );
         let output = run_cmd(&cmd);
         if !output.status.success() {
-            println!(
+            error!(
                 "Failed to dump database: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -108,7 +109,7 @@ impl Mountable for PsqlBackup {
                 f.write(&output.stdout).unwrap();
             }
             Err(e) => {
-                println!("Failed to open {}: {}", self.get_mount_path(), e);
+                error!("Failed to open {}: {}", self.get_mount_path(), e);
                 return false;
             }
         }
@@ -116,7 +117,7 @@ impl Mountable for PsqlBackup {
     }
 
     fn unmount(&self) -> bool {
-        println!("Unmounting psql");
+        info!("Unmounting psql");
         if let Some(ref mut child) = *self.proxy_process.borrow_mut() {
             child.kill().unwrap();
         }
@@ -150,7 +151,7 @@ impl BackupType for PsqlBackup {
     }
 
     fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>> {
-        println!("Getting folders");
+        info!("Getting folders");
         let mut v: Vec<FolderEntry<Box<dyn Folder>>> = vec![];
         let dyn_folder: Box<dyn Folder> = Box::new(PsqlFolder::new(&self.get_mount_path()));
         let fe = FolderEntry {

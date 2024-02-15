@@ -1,5 +1,6 @@
 use std::{error::Error, fmt::Display, path::PathBuf, process::ExitStatus, str::FromStr};
 
+use log::info;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr, PickFirst};
 use void::Void;
@@ -65,7 +66,7 @@ impl BackupType for SSHBackup {
     }
 
     fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>> {
-        println!("Getting folders");
+        info!("Getting folders");
         let mut v: Vec<FolderEntry<Box<dyn Folder>>> = vec![];
         for f in &self.folders {
             let mut folder = f.folder.clone();
@@ -106,7 +107,7 @@ impl Folder for SSHFolder {
                 .chars()
                 .filter(|c| !c.is_whitespace())
                 .collect();
-            println!("{}", output_str);
+            info!("{}", output_str);
 
             let val = output_str.parse::<u64>().unwrap_or(0);
             return Ok(val);
