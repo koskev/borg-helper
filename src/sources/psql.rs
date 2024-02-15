@@ -26,7 +26,7 @@ struct PsqlBackup {
     host: Option<String>,
     k8s_deployment: Option<String>,
     #[serde(default)]
-    tags: VeMountablec<String>,
+    tags: Vec<String>,
 
     #[serde(skip)]
     proxy_process: RefCell<Option<Child>>,
