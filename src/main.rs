@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::BufReader;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::{Child, Command, Output, Stdio};
 use std::str::FromStr;
@@ -101,27 +100,6 @@ impl Password for PasswordOptions {
 struct ConditionalExclude {
     triggers: Vec<String>,
     excludes: Vec<String>,
-}
-
-struct SecrectString(SecUtf8);
-
-impl Deref for SecrectString {
-    type Target = SecUtf8;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Debug for SecrectString {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Password: ***SECRET***").finish()
-    }
-}
-
-impl Default for SecrectString {
-    fn default() -> Self {
-        Self(SecUtf8::from_str("").unwrap())
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
