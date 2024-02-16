@@ -146,8 +146,8 @@ impl Repository {
 
     fn backup_create(
         &self,
-        backup_source_groups: &Vec<BackupGroup>,
-        excludes: &Vec<String>,
+        backup_source_groups: &[BackupGroup],
+        excludes: &[String],
         date: &DateTime<Local>,
     ) {
         self.export_password();
@@ -191,7 +191,7 @@ impl Repository {
         }
     }
 
-    fn backup_prune(&self, backup_groups: &Vec<BackupGroup>) {
+    fn backup_prune(&self, backup_groups: &[BackupGroup]) {
         let prefixes: Vec<String> = backup_groups
             .iter()
             .map(|b| b.r#type.get_hostname())
@@ -325,8 +325,8 @@ impl Borg {
         options: &str,
         repo: &str,
         name: &str,
-        folders: &Vec<PathBuf>,
-        excludes: &Vec<String>,
+        folders: &[PathBuf],
+        excludes: &[String],
     ) {
         let folder_vec_str: Vec<&str> = folders.iter().filter_map(|f| f.to_str()).collect();
         let folders_str = folder_vec_str.join(" ");
