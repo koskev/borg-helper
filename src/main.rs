@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::BufReader;
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command, Output, Stdio};
 use std::str::FromStr;
 
@@ -67,6 +67,12 @@ struct PlainPassword {
     value: SecUtf8,
 }
 
+impl From<SecUtf8> for PlainPassword {
+    fn from(value: SecUtf8) -> Self {
+        Self { value }
+    }
+}
+
 impl Password for PlainPassword {
     fn get_password(&self) -> Option<SecUtf8> {
         Some(self.value.clone())
@@ -129,10 +135,82 @@ struct Repository {
 }
 
 impl Repository {
+    fn merge_options(&mut self, options: &RepositoryOptions) {
+        self.options = self.options.merge(options);
+    }
+
+    fn export_password(&self) {
+        let options = &self.options;
+        let mut password = None;
+        match &options.password {
+            Some(pwo) => password = pwo.get_password(),
+            None => (),
+        }
+        if password.is_none() {
+            // Ask for password
+            // TODO: cache password?
+            let pw = rpassword::prompt_password(format!("Enter Password for repo {}:", self.path))
+                .unwrap();
+            password = Some(SecUtf8::from_str(&pw).unwrap());
+        }
+        match &password {
+            Some(pw) => std::env::set_var("BORG_PASSPHRASE", pw.unsecure()),
+            None => (),
+        }
+    }
+
     fn is_valid(&self) -> bool {
+        self.export_password();
         let cmd = format!("borg info {}", self.path);
         let output = run_cmd(&cmd);
-        return output.status.success();
+        output.status.success()
+    }
+
+    fn backup_create(
+        &self,
+        backup_source_groups: &Vec<BackupGroup>,
+        excludes: &Vec<String>,
+        date: &DateTime<Local>,
+    ) {
+        self.export_password();
+        if self.is_valid() {
+            info!("Processing {}", self.path);
+            for backup_source in backup_source_groups {
+                info!("Processing source {}", backup_source.name);
+                let mut folders = backup_source.r#type.get_folders();
+                if self.tags.len() > 0 {
+                    folders = folders
+                        .into_iter()
+                        .filter(|f| self.tags.iter().any(|item| f.tags.contains(item)))
+                        .collect();
+                }
+                if backup_source.r#type.pre_backup() {
+                    let paths: Vec<PathBuf> = folders.iter().map(|f| f.folder.get_path()).collect();
+                    info!("Backing up folders {:?}", paths);
+                    // Create Backup
+                    if folders.len() > 0 {
+                        Borg::_backup_create(
+                            &format!(
+                                "{} {}",
+                                backup_source.r#type.get_additional_options(),
+                                &self.options.cmdline.clone().unwrap_or_default()
+                            ),
+                            &self.path,
+                            &format!(
+                                "{}-{}",
+                                backup_source.r#type.get_hostname(),
+                                date.to_rfc3339()
+                            ),
+                            &paths,
+                            excludes,
+                        )
+                    }
+                }
+                backup_source.r#type.post_backup();
+            }
+        } else {
+            warn!("Skipping repo {}", self.path);
+        }
     }
 }
 
@@ -201,6 +279,7 @@ impl Borg {
         let conf_reader = BufReader::new(File::open(config_path).unwrap());
         let mut obj: Borg = serde_yaml::from_reader(conf_reader).unwrap();
         obj.date = Local::now();
+        obj.fill_parent_options();
 
         obj
     }
@@ -208,70 +287,20 @@ impl Borg {
     fn from_str(config: &str) -> Self {
         let mut obj: Borg = serde_yaml::from_str(config).unwrap();
         obj.date = Local::now();
+        obj.fill_parent_options();
 
         obj
     }
 
+    fn fill_parent_options(&mut self) {
+        for repo in &mut self.repository.repositories {
+            repo.merge_options(&self.repository.options);
+        }
+    }
+
     fn backup_create(&self) {
         for repo in &self.repository.repositories {
-            let options = &repo.options.merge(&self.repository.options);
-            let mut password = None;
-            match &options.password {
-                Some(pwo) => password = pwo.get_password(),
-                None => (),
-            }
-            if password.is_none() {
-                // Ask for password
-                // XXX: any way to prevent this?
-                let pw =
-                    rpassword::prompt_password(format!("Enter Password for repo {}:", repo.path))
-                        .unwrap();
-                password = Some(SecUtf8::from_str(&pw).unwrap());
-            }
-            match &password {
-                Some(pw) => std::env::set_var("BORG_PASSPHRASE", pw.unsecure()),
-                None => (),
-            }
-            drop(password);
-            if repo.is_valid() {
-                info!("Processing {}", repo.path);
-                for backup_source in &self.backups {
-                    info!("Processing source {}", backup_source.name);
-                    let mut folders = backup_source.r#type.get_folders();
-                    if repo.tags.len() > 0 {
-                        folders = folders
-                            .into_iter()
-                            .filter(|f| repo.tags.iter().any(|item| f.tags.contains(item)))
-                            .collect();
-                    }
-                    if backup_source.r#type.pre_backup() {
-                        let paths: Vec<PathBuf> =
-                            folders.iter().map(|f| f.folder.get_path()).collect();
-                        info!("Backing up folders {:?}", paths);
-                        // Create Backup
-                        if folders.len() > 0 {
-                            Borg::_backup_create(
-                                &format!(
-                                    "{} {}",
-                                    backup_source.r#type.get_additional_options(),
-                                    &options.cmdline.clone().unwrap_or_default()
-                                ),
-                                &repo.path,
-                                &format!(
-                                    "{}-{}",
-                                    backup_source.r#type.get_hostname(),
-                                    self.date.to_rfc3339()
-                                ),
-                                &paths,
-                                &self.excludes,
-                            )
-                        }
-                    }
-                    backup_source.r#type.post_backup();
-                }
-            } else {
-                warn!("Skipping repo {}", repo.path);
-            }
+            repo.backup_create(&self.backups, &self.excludes, &self.date);
         }
     }
 
@@ -303,16 +332,6 @@ impl Borg {
 
     fn compact(&self) {
         self.run_every_repo("compact");
-    }
-
-    fn is_repo(repo: &str) -> bool {
-        let p = Path::new(repo);
-        if p.exists() {
-            let cmd = format!("borg info {repo}");
-            let output = run_cmd(&cmd);
-            return output.status.success();
-        }
-        false
     }
 
     // TODO: make filter a parameter
@@ -515,8 +534,7 @@ mod test {
                 .options
                 .prune
                 .clone()
-                .unwrap()
-                .merge(&expeted_prune),
+                .unwrap(),
             repo_prune
         );
 
