@@ -343,7 +343,6 @@ impl Borg {
         self.run_every_repo("compact");
     }
 
-    // TODO: make filter a parameter
     fn _backup_create(
         options: &str,
         repo: &str,
@@ -353,42 +352,8 @@ impl Borg {
     ) {
         let folder_vec_str: Vec<&str> = folders.iter().filter_map(|f| f.to_str()).collect();
         let folders_str = folder_vec_str.join(" ");
-        let mut local_excludes = excludes.clone();
-        //let mut target_paths = Vec::new();
-        //let mut dirs_to_check = folders.clone();
-        //let mut visited_dirs = HashSet::new();
-        //while let Some(dir) = dirs_to_check.pop() {
-        //    if let Ok(dir_contents) = fs::read_dir(dir) {
-        //        for subentry in dir_contents {
-        //            let subentry = subentry.unwrap();
-        //            let subpath = subentry.path();
-        //            let real_path = fs::read_link(&subpath).unwrap_or_else(|_| subpath.clone());
-        //            if real_path.is_dir() && !visited_dirs.insert(real_path) {
-        //                println!("Already visited {}", subpath.display());
-        //                continue;
-        //            }
 
-        //            if subpath.is_dir() && !subpath.is_symlink() {
-        //                dirs_to_check.push(subpath.to_string_lossy().to_string());
-        //            } else if subpath.ends_with("Cargo.toml") {
-        //                let target_path =
-        //                    Path::new(&subpath).parent().unwrap().join("target").clone();
-        //                if target_path.exists() {
-        //                    println!("#### ignoring {target_path:?}");
-        //                    target_paths.push(target_path);
-        //                }
-        //            }
-        //        }
-        //    }
-        //}
-
-        //local_excludes.extend(
-        //    target_paths
-        //        .into_iter()
-        //        .map(|p| p.to_string_lossy().to_string()),
-        //);
-
-        let folder_exclude_str: String = local_excludes
+        let folder_exclude_str: String = excludes
             .into_iter()
             .map(|val| format!(" --exclude {val}"))
             .collect();
