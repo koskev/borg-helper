@@ -106,7 +106,7 @@ impl Mountable for PsqlBackup {
         let output_file = File::create(self.get_mount_path());
         match output_file {
             Ok(mut f) => {
-                f.write(&output.stdout).unwrap();
+                f.write_all(&output.stdout).unwrap();
             }
             Err(e) => {
                 error!("Failed to open {}: {}", self.get_mount_path(), e);
@@ -142,12 +142,11 @@ impl BackupType for PsqlBackup {
     }
 
     fn get_hostname(&self) -> String {
-        let name = self.host.clone().unwrap_or(
+        self.host.clone().unwrap_or(
             self.k8s_deployment
                 .clone()
                 .unwrap_or("psql_back".to_string()),
-        );
-        name
+        )
     }
 
     fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>> {

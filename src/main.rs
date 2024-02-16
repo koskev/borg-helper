@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Write};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -156,17 +156,14 @@ impl Repository {
             for backup_source in backup_source_groups {
                 info!("Processing source {}", backup_source.name);
                 let mut folders = backup_source.r#type.get_folders();
-                if self.tags.len() > 0 {
-                    folders = folders
-                        .into_iter()
-                        .filter(|f| self.tags.iter().any(|item| f.tags.contains(item)))
-                        .collect();
+                if !self.tags.is_empty() {
+                    folders.retain(|f| self.tags.iter().any(|item| f.tags.contains(item)));
                 }
                 if backup_source.r#type.pre_backup() {
                     let paths: Vec<PathBuf> = folders.iter().map(|f| f.folder.get_path()).collect();
                     info!("Backing up folders {:?}", paths);
                     // Create Backup
-                    if folders.len() > 0 {
+                    if !folders.is_empty() {
                         Borg::_backup_create(
                             &format!(
                                 "{} {}",
@@ -331,10 +328,10 @@ impl Borg {
         let folder_vec_str: Vec<&str> = folders.iter().filter_map(|f| f.to_str()).collect();
         let folders_str = folder_vec_str.join(" ");
 
-        let folder_exclude_str: String = excludes
-            .into_iter()
-            .map(|val| format!(" --exclude {val}"))
-            .collect();
+        let folder_exclude_str = excludes.iter().fold(String::new(), |mut output, val| {
+            let _ = write!(output, " --exclude {val}");
+            output
+        });
 
         let cmd = format!("borg create {options} {repo}::{name} {folders_str} {folder_exclude_str} --exclude-if-present .nobackup --exclude-if-present CACHEDIR.TAG");
         let _res = run_cmd_piped(&cmd);

@@ -53,7 +53,7 @@ impl BackupType for SSHBackup {
     }
 
     fn get_hostname(&self) -> String {
-        let host = self.target.split_once("@");
+        let host = self.target.split_once('@');
         match host {
             Some((_user, hostname)) => hostname.to_string(),
             // Probably an ssh shortcut
@@ -118,8 +118,7 @@ impl Folder for SSHFolder {
     fn get_path(&self) -> PathBuf {
         // Strip leading / if it exists
         let strip = self.path.strip_prefix("/").unwrap_or(&self.path);
-        let merged_path = self.prefix.join(strip);
-        merged_path
+        self.prefix.join(strip)
     }
 }
 
