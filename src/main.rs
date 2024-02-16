@@ -212,6 +212,26 @@ impl Repository {
             warn!("Skipping repo {}", self.path);
         }
     }
+
+    fn backup_prune(&self, backup_groups: &Vec<BackupGroup>) {
+        let prefixes: Vec<String> = backup_groups
+            .iter()
+            .map(|b| b.r#type.get_hostname())
+            .collect();
+        prefixes.iter().for_each(|prefix| {
+                if self.is_valid() {
+                    //let mut keep_vec = vec![];
+                    let prune_options = self.options.prune.clone().unwrap_or_default();
+                    let cmd = format!("borg prune --list --stats -v --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --glob-archives '{prefix}*' {}",
+                                      prune_options.daily.unwrap_or_default(),
+                                      prune_options.weekly.unwrap_or_default(),
+                                      prune_options.monthly.unwrap_or_default(),
+                                      prune_options.yearly.unwrap_or_default(), self.path
+                                      );
+                    run_cmd_piped(&cmd);
+                }
+        });
+    }
 }
 
 impl FromStr for Repository {
@@ -305,19 +325,8 @@ impl Borg {
     }
 
     fn backup_prune(&self) {
-        let prefixes: Vec<String> = self
-            .backups
-            .iter()
-            .map(|b| b.r#type.get_hostname())
-            .collect();
-        prefixes.iter().for_each(|prefix| {
-            //let mut keep_vec = vec![];
-            //let cmd = format!("prune --list --stats -v --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --glob-archives '{prefix}*'",
-            //                  self.prune_settings.daily,
-            //                  self.prune_settings.weekly,
-            //                  self.prune_settings.monthly,
-            //                  self.prune_settings.yearly);
-            //self.run_every_repo(&cmd);
+        self.repository.repositories.iter().for_each(|repo| {
+            repo.backup_prune(&self.backups);
         });
     }
 
