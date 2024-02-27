@@ -13,6 +13,13 @@ pub fn run_cmd(cmd: &str) -> Output {
     output
 }
 
+pub fn run_cmd_checked(cmd: &str) -> Result<Output, std::io::Error> {
+    info!("Calling \"{}\"", cmd);
+    let output = Command::new("sh").arg("-c").arg(cmd).output();
+
+    output
+}
+
 pub fn run_cmd_piped(cmd: &str) -> Output {
     info!("Calling piped \"{}\"", cmd);
     let output = Command::new("sh")
