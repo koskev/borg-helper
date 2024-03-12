@@ -1,18 +1,21 @@
 use std::fmt::{Debug, Write};
 use std::fs::File;
 use std::io::BufReader;
+use std::io::Write as ioWrite;
 use std::path::PathBuf;
 use std::process::{Child, Command, Output, Stdio};
 use std::str::FromStr;
 
 use chrono::{DateTime, Local};
 use clap::Parser;
-use log::{debug, info, warn, LevelFilter};
+use log::{debug, error, info, warn, LevelFilter};
+use mktemp::Temp;
 use secstr::SecUtf8;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_with::{DisplayFromStr, PickFirst};
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
+use utils::cmd::spawn_cmd_inherit;
 use utils::folder::BackupGroup;
 use void::Void;
 
@@ -325,16 +328,39 @@ impl Borg {
         folders: &[PathBuf],
         excludes: &[String],
     ) {
-        let folder_vec_str: Vec<&str> = folders.iter().filter_map(|f| f.to_str()).collect();
-        let folders_str = folder_vec_str.join(" ");
+        let folder_vec_str: Vec<String> = folders
+            .iter()
+            .filter_map(|f| {
+                if let Some(path) = f.to_str() {
+                    Some(format!("R {}", path))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let folders_str = folder_vec_str.join("\n");
 
         let folder_exclude_str = excludes.iter().fold(String::new(), |mut output, val| {
             let _ = write!(output, " --exclude {val}");
             output
         });
 
-        let cmd = format!("borg create {options} {repo}::{name} {folders_str} {folder_exclude_str} --exclude-if-present .nobackup --exclude-if-present CACHEDIR.TAG");
-        let _res = run_cmd_piped(&cmd);
+        let folder_file = Temp::new_file().unwrap();
+        let mut f = File::create(&folder_file).unwrap();
+        f.write_all(folders_str.as_bytes()).unwrap();
+        drop(f);
+
+        let cmd = format!("borg create {options} {repo}::{name} {folder_exclude_str} --exclude-if-present .nobackup --exclude-if-present CACHEDIR.TAG --patterns-from {}", folder_file.to_str().unwrap());
+        let child_res = spawn_cmd_inherit(&cmd);
+        match child_res {
+            Ok(mut child) => {
+                let mut stdin = child.stdin.take().unwrap();
+                stdin.write_all(folders_str.as_bytes()).unwrap();
+                drop(stdin);
+                child.wait_with_output().unwrap();
+            }
+            Err(e) => error!("Failed to run borg: {e}"),
+        }
     }
 
     fn get_sizes(&self) {
@@ -401,7 +427,7 @@ fn main() {
     )
     .unwrap();
     let cli = Cli::parse();
-    let borg = Borg::from_file("config.yaml");
+    let borg = Borg::from_file("config_test.yaml");
     debug!("{:?}", borg);
     if cli.show_size {
         borg.get_sizes();
@@ -421,8 +447,10 @@ mod test {
     };
 
     use include_dir::{include_dir, Dir};
+    use log::LevelFilter;
     use mktemp::Temp;
     use secstr::SecUtf8;
+    use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 
     use crate::{
         run_cmd,
@@ -436,6 +464,13 @@ mod test {
     };
 
     fn create_repo() -> Temp {
+        TermLogger::init(
+            LevelFilter::Trace,
+            Config::default(),
+            TerminalMode::Stdout,
+            ColorChoice::Auto,
+        )
+        .unwrap();
         let repo_path = Temp::new_dir().unwrap();
         let output = run_cmd(&format!(
             "borg init --encryption none {}",
@@ -464,11 +499,12 @@ mod test {
 
     #[test]
     fn test_repo_ssh() {
-        let repo_files: Vec<PathBuf> = get_files(Path::new("./src"))
+        let repo_individual_files: Vec<PathBuf> = get_files(Path::new("./src"))
             .unwrap()
             .iter()
             .map(|f| f.canonicalize().unwrap())
             .collect();
+        let repo_files = vec![PathBuf::from_str("./src").unwrap().canonicalize().unwrap()];
 
         let folders = repo_files
             .iter()
@@ -486,7 +522,7 @@ mod test {
                 folders,
                 target: "localhost".to_string(),
             }),
-            repo_files,
+            repo_individual_files,
         );
     }
 
