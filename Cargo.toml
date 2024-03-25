@@ -19,7 +19,7 @@ rpassword = "7.3.1"
 secstr = { version = "0.5.1", features = ["serde"] }
 serde = { version = "1.0.197", features = ["derive"] }
 serde_with = "3.7.0"
-serde_yaml = "0.9.32"
+serde_yaml = "0.9.34"
 simplelog = "0.12.2"
 typetag = "0.2.16"
 void = "1.0.2"
