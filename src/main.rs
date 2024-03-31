@@ -416,6 +416,9 @@ fn run_cmd(cmd: &str) -> Output {
 struct Cli {
     #[arg(short, long)]
     show_size: bool,
+
+    #[arg(short, long, default_value = "config.yaml")]
+    config: String,
 }
 
 fn main() {
@@ -427,7 +430,7 @@ fn main() {
     )
     .unwrap();
     let cli = Cli::parse();
-    let borg = Borg::from_file("config_test.yaml");
+    let borg = Borg::from_file(&cli.config);
     debug!("{:?}", borg);
     if cli.show_size {
         borg.get_sizes();
