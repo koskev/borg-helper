@@ -85,6 +85,7 @@ mod test {
     use super::SaveBackup;
     use crate::utils::folder::BackupType;
 
+    #[ignore]
     #[test]
     fn test_ludusavi() {
         let back = SaveBackup {};

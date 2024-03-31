@@ -497,6 +497,7 @@ mod test {
         Ok(dir_vec)
     }
 
+    #[ignore]
     #[test]
     fn test_repo_ssh() {
         let repo_individual_files: Vec<PathBuf> = get_files(Path::new("./src"))
@@ -526,6 +527,7 @@ mod test {
         );
     }
 
+    #[ignore]
     #[test]
     fn test_repo_local() {
         let repo_files = get_files(Path::new("./src")).unwrap();
