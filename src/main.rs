@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_with::{DisplayFromStr, PickFirst};
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
-use utils::cmd::spawn_cmd_inherit;
+use utils::cmd::{run_cmd_inherit, spawn_cmd_inherit};
 use utils::folder::BackupGroup;
 use void::Void;
 
@@ -351,16 +351,7 @@ impl Borg {
         drop(f);
 
         let cmd = format!("borg create {options} {repo}::{name} {folder_exclude_str} --exclude-if-present .nobackup --exclude-if-present CACHEDIR.TAG --patterns-from {}", folder_file.to_str().unwrap());
-        let child_res = spawn_cmd_inherit(&cmd);
-        match child_res {
-            Ok(mut child) => {
-                let mut stdin = child.stdin.take().unwrap();
-                stdin.write_all(folders_str.as_bytes()).unwrap();
-                drop(stdin);
-                child.wait_with_output().unwrap();
-            }
-            Err(e) => error!("Failed to run borg: {e}"),
-        }
+        run_cmd_inherit(&cmd);
     }
 
     fn get_sizes(&self) {
