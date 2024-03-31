@@ -540,6 +540,7 @@ mod test {
         ));
 
         let mount_files = get_files(Path::new(mount_path.as_path())).unwrap();
+        run_cmd(&format!("fusermount -u {}", mount_path.to_str().unwrap()));
 
         // O(n^2) but we only have a low amount of files. O(n) would be using a hashset
         for mount_file in mount_files {
@@ -551,9 +552,6 @@ mod test {
                 mount_file.to_str().unwrap().ends_with(&end_path)
             }));
         }
-
-        // TODO: unmount even on failure
-        run_cmd(&format!("fusermount -u {}", mount_path.to_str().unwrap()));
     }
 
     #[test]
