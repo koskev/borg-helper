@@ -194,17 +194,17 @@ impl Repository {
             .map(|b| b.r#type.get_hostname())
             .collect();
         prefixes.iter().for_each(|prefix| {
-                if self.is_valid() {
-                    //let mut keep_vec = vec![];
-                    let prune_options = self.options.prune.clone().unwrap_or_default();
-                    let cmd = format!("borg prune --list --stats -v --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --glob-archives '{prefix}*' {}",
-                                      prune_options.daily.unwrap_or_default(),
-                                      prune_options.weekly.unwrap_or_default(),
-                                      prune_options.monthly.unwrap_or_default(),
-                                      prune_options.yearly.unwrap_or_default(), self.path
-                                      );
-                    run_cmd_piped(&cmd);
-                }
+            if self.is_valid() {
+                //let mut keep_vec = vec![];
+                let prune_options = self.options.prune.clone().unwrap_or_default();
+                let cmd = format!("borg prune --list --stats -v --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --glob-archives '{prefix}*' {}",
+                                  prune_options.daily.unwrap_or_default(),
+                                  prune_options.weekly.unwrap_or_default(),
+                                  prune_options.monthly.unwrap_or_default(),
+                                  prune_options.yearly.unwrap_or_default(), self.path
+                                 );
+                run_cmd_piped(&cmd);
+            }
         });
     }
 }
