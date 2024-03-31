@@ -12,21 +12,21 @@ backups:
     - path: /home/important
       tags:
         - important
+# Uses pg_dumpall to save the database
   - name: k8s_psql
     type: psql
     user: postgres
     password: mycoolpsqlpassword
     port: 5432
+# Optional: Needs permissions port forward the deployment
     k8s_deployment: postgresql-deployment-0
     tags:
       - important
+# Requires ludasavi. Searches for all saves on the local pc and adds it to the backup
+  - name: games
+    types: saves
 excludes:
 - '*.fit'
-conditional_excludes:
-  - triggers:
-    - "Cargo.toml"
-    excludes:
-    - "target"
 
 repository:
   options:
