@@ -220,7 +220,7 @@ impl FromStr for Repository {
 }
 
 #[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Repositories {
     #[serde_as(as = "Vec<PickFirst<(_, DisplayFromStr)>>")]
     repositories: Vec<Repository>,
@@ -255,7 +255,7 @@ impl RepositoryOptions {
 }
 
 #[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Borg {
     repository: Repositories,
     backups: Vec<BackupGroup>,
@@ -413,11 +413,148 @@ fn main() {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
+    use std::{
+        fs::{self, DirEntry},
+        io,
+        path::{Path, PathBuf},
+        str::FromStr,
+    };
 
     use include_dir::{include_dir, Dir};
+    use mktemp::Temp;
+    use secstr::SecUtf8;
 
-    use crate::{Borg, Password, PruneSettings, Repository};
+    use crate::{
+        run_cmd,
+        sources::{
+            local::{LocalBackup, LocalFolder},
+            ssh::{SSHBackup, SSHFolder},
+        },
+        utils::folder::{BackupGroup, BackupType, Folder, FolderEntry},
+        Borg, Password, PasswordOptions, PlainPassword, PruneSettings, Repositories, Repository,
+        RepositoryOptions,
+    };
+
+    fn create_repo() -> Temp {
+        let repo_path = Temp::new_dir().unwrap();
+        let output = run_cmd(&format!(
+            "borg init --encryption none {}",
+            repo_path.to_str().unwrap()
+        ));
+        assert!(output.status.success());
+        repo_path
+    }
+
+    fn get_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
+        let mut dir_vec = vec![];
+        if dir.is_dir() {
+            for entry in fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    let mut child_dir_vec = get_files(&path)?;
+                    dir_vec.append(&mut child_dir_vec);
+                } else {
+                    dir_vec.push(entry.path());
+                }
+            }
+        }
+        Ok(dir_vec)
+    }
+
+    #[test]
+    fn test_repo_ssh() {
+        let repo_files: Vec<PathBuf> = get_files(Path::new("./src"))
+            .unwrap()
+            .iter()
+            .map(|f| f.canonicalize().unwrap())
+            .collect();
+
+        let folders = repo_files
+            .iter()
+            .map(|f| FolderEntry {
+                folder: SSHFolder {
+                    path: f.as_path().to_path_buf(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .collect();
+
+        test_repo(
+            Box::new(SSHBackup {
+                folders,
+                target: "localhost".to_string(),
+            }),
+            repo_files,
+        );
+    }
+
+    #[test]
+    fn test_repo_local() {
+        let repo_files = get_files(Path::new("./src")).unwrap();
+
+        let folders = repo_files
+            .iter()
+            .map(|f| FolderEntry {
+                folder: LocalFolder {
+                    path: f.as_path().to_path_buf(),
+                },
+                ..Default::default()
+            })
+            .collect();
+        test_repo(Box::new(LocalBackup { folders }), repo_files);
+    }
+
+    fn test_repo(backup_type: Box<dyn BackupType>, repo_files: Vec<PathBuf>) {
+        let repo_path = create_repo();
+
+        let borg = Borg {
+            repository: Repositories {
+                repositories: vec![Repository {
+                    options: RepositoryOptions {
+                        password: Some(PasswordOptions::Plain(PlainPassword {
+                            value: SecUtf8::from_str("").unwrap(),
+                        })),
+                        ..Default::default()
+                    },
+                    path: repo_path.as_path().to_str().unwrap().to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            backups: vec![BackupGroup {
+                name: "test".to_string(),
+                r#type: backup_type,
+            }],
+            ..Default::default()
+        };
+
+        borg.backup_create();
+
+        let mount_path = Temp::new_dir().unwrap();
+        let _output = run_cmd(&format!(
+            "borg mount {} {}",
+            repo_path.as_path().to_str().unwrap(),
+            mount_path.to_str().unwrap()
+        ));
+
+        let mount_files = get_files(Path::new(mount_path.as_path())).unwrap();
+
+        // O(n^2) but we only have a low amount of files. O(n) would be using a hashset
+        for mount_file in mount_files {
+            assert!(repo_files.iter().any(|repo_file| {
+                let mut end_path = repo_file.to_str().unwrap().to_string();
+                if end_path.chars().nth(0).unwrap() == '.' {
+                    end_path = end_path[1..].to_string();
+                }
+                mount_file.to_str().unwrap().ends_with(&end_path)
+            }));
+        }
+
+        // TODO: unmount even on failure
+        run_cmd(&format!("fusermount -u {}", mount_path.to_str().unwrap()));
+    }
 
     #[test]
     fn test_from_str() {

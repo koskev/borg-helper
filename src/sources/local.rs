@@ -8,7 +8,7 @@ use crate::utils::folder::{BackupType, Folder, FolderEntry};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct LocalFolder {
-    path: PathBuf,
+    pub(crate) path: PathBuf,
 }
 
 impl Folder for LocalFolder {
@@ -44,9 +44,9 @@ impl FromStr for FolderEntry<LocalFolder> {
 
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct LocalBackup {
+pub(crate) struct LocalBackup {
     #[serde_as(as = "Vec<PickFirst<(_, DisplayFromStr)>>")]
-    folders: Vec<FolderEntry<LocalFolder>>,
+    pub(crate) folders: Vec<FolderEntry<LocalFolder>>,
 }
 
 #[typetag::serde(name = "local")]

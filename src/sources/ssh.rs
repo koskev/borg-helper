@@ -15,10 +15,10 @@ use crate::{
 
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct SSHBackup {
-    target: String,
+pub struct SSHBackup {
+    pub target: String,
     #[serde_as(as = "Vec<PickFirst<(_, DisplayFromStr)>>")]
-    folders: Vec<FolderEntry<SSHFolder>>,
+    pub folders: Vec<FolderEntry<SSHFolder>>,
 }
 
 impl Mountable for SSHBackup {
@@ -84,10 +84,10 @@ impl BackupType for SSHBackup {
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
-struct SSHFolder {
-    path: PathBuf,
-    prefix: PathBuf,
-    target: String,
+pub struct SSHFolder {
+    pub path: PathBuf,
+    pub prefix: PathBuf,
+    pub target: String,
 }
 
 impl Folder for SSHFolder {
