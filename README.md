@@ -46,7 +46,7 @@ Get data from a postgres database by using `pg_dumpall`. You can optionally spec
    user: postgres
    password: mycoolpsqlpassword
    port: 5432
-   # Optional: Needs permissions port forward the deployment
+   # Optional: Needs permissions to port forward the deployment
    k8s_deployment: postgresql-deployment-0
    tags:
      - important
