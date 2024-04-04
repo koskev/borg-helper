@@ -27,9 +27,19 @@ pub struct JsonOutput {
     games: HashMap<String, ApiGame>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct GameSettings {
+    name: String,
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct SaveBackup {}
+struct SaveBackup {
+    #[serde(default)]
+    pub games: Vec<GameSettings>,
+}
 
 #[typetag::serde(name = "saves")]
 impl BackupType for SaveBackup {
@@ -58,21 +68,31 @@ impl BackupType for SaveBackup {
         let files: Vec<FolderEntry<Box<dyn Folder>>> = json_data
             .games
             .iter()
-            .filter_map(|(_name, data)| match data {
+            .filter_map(|(name, data)| match data {
                 ApiGame::Operative { files } => {
-                    Some(files.keys().cloned().collect::<Vec<String>>())
+                    let mut entries = vec![];
+                    let paths = files.keys().cloned().collect::<Vec<String>>();
+                    let mut tags = vec![];
+                    // search for custom game options
+                    // TODO: allow for regex/wildcard
+                    if let Some(game_settings) = self.games.iter().find(|f| f.name == *name) {
+                        // we got an entry for the specified game
+                        tags = game_settings.tags.clone();
+                    }
+
+                    for path in paths {
+                        let bf: Box<dyn Folder> = Box::new(LocalFolder::from_str(&path).unwrap());
+                        let fe = FolderEntry {
+                            tags: tags.clone(),
+                            folder: bf,
+                        };
+                        entries.push(fe);
+                    }
+                    Some(entries)
                 }
                 _ => None,
             })
             .flatten()
-            .map(|path| {
-                let bf: Box<dyn Folder> = Box::new(LocalFolder::from_str(&path).unwrap());
-                let fe = FolderEntry {
-                    tags: vec![],
-                    folder: bf,
-                };
-                fe
-            })
             .collect();
         files
     }
@@ -88,7 +108,7 @@ mod test {
     #[ignore]
     #[test]
     fn test_ludusavi() {
-        let back = SaveBackup {};
+        let back = SaveBackup::default();
         let folders = back.get_folders();
         assert_ge!(folders.len(), 1);
     }

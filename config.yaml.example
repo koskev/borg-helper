@@ -22,9 +22,14 @@ backups:
     k8s_deployment: postgresql-deployment-0
     tags:
       - important
-# Requires ludasavi. Searches for all saves on the local pc and adds it to the backup
+  # Requires ludusavi. Searches for all saves on the local pc and adds it to the backup
   - name: games
     types: saves
+    games:
+      # Game specific settings. Currently name is a 1:1 match of the output from ludusavi backup --preview --api
+      - name: Stardew Valley
+        tags:
+          - important
 excludes:
 - '*.fit'
 
