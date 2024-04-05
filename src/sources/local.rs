@@ -1,4 +1,4 @@
-use std::{error::Error, path::PathBuf, str::FromStr};
+use std::{error::Error, fs, os::unix::fs::MetadataExt, path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, PickFirst};
@@ -11,9 +11,28 @@ pub struct LocalFolder {
     pub(crate) path: PathBuf,
 }
 
+fn get_path_size(path: PathBuf) -> Result<u64, Box<dyn Error>> {
+    let mut total_size = 0;
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+
+            if file_type.is_dir() {
+                total_size += get_path_size(entry.path()).unwrap_or(0);
+            } else {
+                total_size += entry.metadata().map(|meta| meta.size()).unwrap_or(0);
+            }
+        }
+    } else {
+        total_size += path.metadata().map(|meta| meta.size()).unwrap_or(0);
+    }
+    Ok(total_size)
+}
+
 impl Folder for LocalFolder {
     fn get_size(&self) -> Result<u64, Box<dyn Error>> {
-        Ok(0)
+        get_path_size(self.get_path())
     }
 
     fn get_path(&self) -> PathBuf {
