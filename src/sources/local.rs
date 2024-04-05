@@ -70,6 +70,7 @@ impl BackupType for LocalBackup {
             let fe = FolderEntry {
                 tags: f.tags.clone(),
                 folder: bf,
+                options: f.options.clone(),
             };
             v.push(fe);
         }

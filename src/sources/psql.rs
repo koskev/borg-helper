@@ -156,6 +156,7 @@ impl BackupType for PsqlBackup {
         let fe = FolderEntry {
             tags: self.tags.clone(),
             folder: dyn_folder,
+            options: None,
         };
         v.push(fe);
         v

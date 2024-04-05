@@ -1,4 +1,5 @@
-use std::fmt::{Debug, Write};
+use std::collections::HashMap;
+use std::fmt::{Debug, Display, Write};
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Write as ioWrite;
@@ -351,23 +352,55 @@ impl Borg {
         run_cmd_inherit(&cmd);
     }
 
-    fn get_sizes(&self) {
+    fn get_sizes(&self) -> BackupSize {
+        let mut sizes = BackupSize::default();
         for backup_source in &self.backups {
             let folders = backup_source.r#type.get_folders();
             // TODO: fix multiple mount calls. Fix auto mount stuff
             for folder_entry in folders {
-                let size = folder_entry.folder.get_size().unwrap_or_default();
-                let size_str = byte_unit::Byte::from_u64(size)
-                    .get_appropriate_unit(byte_unit::UnitType::Binary);
-                info!(
-                    "{}: {:.2}",
-                    folder_entry.folder.get_path().to_str().unwrap_or_default(),
-                    size_str
-                );
+                let skip_folder = folder_entry.options.unwrap_or_default().skip_size;
+                if !skip_folder {
+                    let size = folder_entry.folder.get_size().unwrap_or_default();
+                    sizes.add_size(
+                        &backup_source.name,
+                        folder_entry.folder.get_path().to_str().unwrap(),
+                        size as usize,
+                    );
+                }
             }
 
             backup_source.r#type.post_backup();
         }
+        sizes
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+struct BackupSize {
+    pub sizes: HashMap<String, HashMap<String, usize>>,
+}
+
+impl BackupSize {
+    fn add_size(&mut self, backup_name: &str, path: &str, size: usize) {
+        self.sizes
+            .entry(backup_name.to_string())
+            .or_default()
+            .insert(path.to_string(), size);
+    }
+}
+
+impl Display for BackupSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (backup_name, path_sizes) in &self.sizes {
+            write!(f, "Backup \"{}\":", backup_name)?;
+            for (path, path_size) in path_sizes {
+                let size_str = byte_unit::Byte::from_u64(*path_size as u64)
+                    .get_appropriate_unit(byte_unit::UnitType::Binary);
+                write!(f, "\n\t {}: {}", path, size_str)?;
+            }
+            write!(f, "\n")?;
+        }
+        Ok(())
     }
 }
 
@@ -421,7 +454,8 @@ fn main() {
     let borg = Borg::from_file(&cli.config);
     debug!("{:?}", borg);
     if cli.show_size {
-        borg.get_sizes();
+        let sizes = borg.get_sizes();
+        println!("{}", sizes);
     } else {
         borg.backup_create();
         borg.backup_prune();

@@ -76,6 +76,7 @@ impl BackupType for SSHBackup {
             let fe = FolderEntry {
                 tags: f.tags.clone(),
                 folder: dyn_folder,
+                options: f.options.clone(),
             };
             v.push(fe);
         }

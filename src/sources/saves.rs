@@ -80,6 +80,7 @@ impl BackupType for SaveBackup {
                         let fe = FolderEntry {
                             tags: tags.clone(),
                             folder: bf,
+                            options: None,
                         };
                         entries.push(fe);
                     }

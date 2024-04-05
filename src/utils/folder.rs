@@ -30,12 +30,19 @@ impl<F: Folder + ?Sized> Folder for Box<F> {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct FolderOptions {
+    pub skip_size: bool,
+}
+
 #[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct FolderEntry<T>
 where
     T: Folder,
 {
+    #[serde(default)]
+    pub options: Option<FolderOptions>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(flatten)]
