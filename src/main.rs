@@ -392,7 +392,16 @@ impl BackupSize {
 impl Display for BackupSize {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (backup_name, path_sizes) in &self.sizes {
-            write!(f, "Backup \"{}\":", backup_name)?;
+            let total_size: usize = path_sizes
+                .values()
+                .cloned()
+                .reduce(|acc, size| acc + size)
+                .unwrap_or(0);
+
+            let total_size_str = byte_unit::Byte::from_u64(total_size as u64)
+                .get_appropriate_unit(byte_unit::UnitType::Binary);
+
+            write!(f, "Backup \"{}\" ({}):", backup_name, total_size_str)?;
             for (path, path_size) in path_sizes {
                 let size_str = byte_unit::Byte::from_u64(*path_size as u64)
                     .get_appropriate_unit(byte_unit::UnitType::Binary);
