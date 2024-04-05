@@ -17,7 +17,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Install dependencies
-      run: sudo apt-get install -y borgbackup
+      run: sudo apt-get install -y borgbackup openssh-server
+    - name: Generate ssh key and add to authorized
+      run: ssh-keygen -t ed25519 -q -f "$HOME/.ssh/id_rsa" -N "" && cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys
+    - name: Start ssh service
+      run: service ssh restart
     - name: Build
       run: cargo build --verbose
     - name: Run tests
