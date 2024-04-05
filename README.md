@@ -34,6 +34,10 @@ Get data from a SSH connection
   folders:
     - /root
     - /etc
+    - path: /very/large/slow/folder
+      options:
+        # On slow drives with lots of files the size evaluation can be very slow. This ignores the specified directory
+        skip_size: true
 ```
 
 
