@@ -9,6 +9,7 @@ use std::{
 
 use log::{debug, error, info};
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
+use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -19,10 +20,10 @@ use crate::{
     },
 };
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 struct PsqlBackup {
     user: String,
-    password: String,
+    password: SecUtf8,
     port: u16,
     host: Option<String>,
     k8s_deployment: Option<String>,
