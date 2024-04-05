@@ -101,7 +101,7 @@ mod test {
     use more_asserts::assert_ge;
 
     use super::SaveBackup;
-    use crate::utils::folder::BackupType;
+    use crate::{sources::saves::GameSettings, utils::folder::BackupType};
 
     #[test]
     fn test_ludusavi() {
