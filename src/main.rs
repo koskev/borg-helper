@@ -521,7 +521,6 @@ mod test {
         );
     }
 
-    #[ignore]
     #[test]
     fn test_repo_local() {
         let repo_files = get_files(Path::new("./src")).unwrap();
