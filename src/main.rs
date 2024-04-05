@@ -498,13 +498,12 @@ mod test {
     };
 
     fn create_repo() -> Temp {
-        TermLogger::init(
+        let _ = TermLogger::init(
             LevelFilter::Trace,
             Config::default(),
             TerminalMode::Stdout,
             ColorChoice::Auto,
-        )
-        .unwrap();
+        );
         let repo_path = Temp::new_dir().unwrap();
         let output = run_cmd(&format!(
             "borg init --encryption none {}",
@@ -531,7 +530,6 @@ mod test {
         Ok(dir_vec)
     }
 
-    #[ignore]
     #[test]
     fn test_repo_ssh() {
         let repo_individual_files: Vec<PathBuf> = get_files(Path::new("./src"))
