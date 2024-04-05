@@ -86,7 +86,9 @@ impl BackupType for SSHBackup {
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct SSHFolder {
     pub path: PathBuf,
+    #[serde(skip)]
     pub prefix: PathBuf,
+    #[serde(skip)]
     pub target: String,
 }
 
