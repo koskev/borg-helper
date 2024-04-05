@@ -4,7 +4,6 @@ use std::fs::File;
 use std::io::BufReader;
 use std::io::Write as ioWrite;
 use std::path::PathBuf;
-use std::process::{Child, Command, Output, Stdio};
 use std::str::FromStr;
 
 use chrono::{DateTime, Local};
@@ -16,7 +15,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_with::{DisplayFromStr, PickFirst};
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
-use utils::cmd::run_cmd_inherit;
+use utils::cmd::{run_cmd, run_cmd_inherit, run_cmd_piped};
 use utils::folder::BackupGroup;
 use void::Void;
 
@@ -411,34 +410,6 @@ impl Display for BackupSize {
         }
         Ok(())
     }
-}
-
-fn run_cmd_piped(cmd: &str) -> Output {
-    info!("Calling piped \"{}\"", cmd);
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .output()
-        .expect("failed to execute process");
-
-    output
-}
-
-fn run_cmd_background(cmd: &str) -> Result<Child, std::io::Error> {
-    Command::new("sh").arg("-c").arg(cmd).spawn()
-}
-
-fn run_cmd(cmd: &str) -> Output {
-    info!("Calling \"{}\"", cmd);
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
-        .output()
-        .expect("failed to execute process");
-
-    output
 }
 
 #[derive(Parser)]

@@ -12,12 +12,10 @@ use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSock
 use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    run_cmd, run_cmd_background,
-    utils::{
-        folder::{BackupType, Folder, FolderEntry},
-        mountable::Mountable,
-    },
+use crate::utils::{
+    cmd::{run_cmd, run_cmd_background},
+    folder::{BackupType, Folder, FolderEntry},
+    mountable::Mountable,
 };
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -1,8 +1,7 @@
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 
 use log::info;
 
-#[allow(dead_code)]
 pub fn run_cmd(cmd: &str) -> Output {
     info!("Calling \"{}\"", cmd);
     let output = Command::new("sh")
@@ -46,4 +45,21 @@ pub fn spawn_cmd_inherit(cmd: &str) -> Result<std::process::Child, std::io::Erro
         .spawn();
 
     output
+}
+
+pub fn run_cmd_piped(cmd: &str) -> Output {
+    info!("Calling piped \"{}\"", cmd);
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .output()
+        .expect("failed to execute process");
+
+    output
+}
+
+pub fn run_cmd_background(cmd: &str) -> Result<Child, std::io::Error> {
+    Command::new("sh").arg("-c").arg(cmd).spawn()
 }
