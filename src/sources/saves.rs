@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, str::FromStr};
+use std::{collections::HashMap, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -10,9 +10,7 @@ use crate::utils::{
 use super::local::LocalFolder;
 
 #[derive(Debug, Default, Deserialize)]
-struct ApiFile {
-    bytes: u64,
-}
+struct ApiFile {}
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
@@ -52,10 +50,7 @@ impl BackupType for SaveBackup {
     }
 
     fn get_hostname(&self) -> String {
-        format!(
-            "{}-games",
-            hostname::get().unwrap().to_str().unwrap().to_string()
-        )
+        format!("{}-games", hostname::get().unwrap().to_str().unwrap())
     }
 
     fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>> {

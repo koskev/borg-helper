@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Display, path::PathBuf, process::ExitStatus, str::FromStr};
+use std::{error::Error, path::PathBuf, str::FromStr};
 
 use log::info;
 use serde::{Deserialize, Serialize};

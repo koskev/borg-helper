@@ -8,14 +8,14 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Local};
 use clap::Parser;
-use log::{debug, error, info, warn, LevelFilter};
+use log::{debug, info, warn, LevelFilter};
 use mktemp::Temp;
 use secstr::SecUtf8;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_with::{DisplayFromStr, PickFirst};
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
-use utils::cmd::{run_cmd_inherit, spawn_cmd_inherit};
+use utils::cmd::run_cmd_inherit;
 use utils::folder::BackupGroup;
 use void::Void;
 
@@ -282,6 +282,7 @@ impl Borg {
         obj
     }
 
+    #[allow(dead_code)]
     fn from_str(config: &str) -> Self {
         let mut obj: Borg = serde_yaml::from_str(config).unwrap();
         obj.date = Local::now();
@@ -308,6 +309,7 @@ impl Borg {
         });
     }
 
+    #[allow(dead_code)]
     fn run_every_repo(&self, command: &str) {
         for repo in &self.repository.repositories {
             if repo.is_valid() {
@@ -317,6 +319,7 @@ impl Borg {
         }
     }
 
+    #[allow(dead_code)]
     fn compact(&self) {
         self.run_every_repo("compact");
     }
@@ -330,13 +333,7 @@ impl Borg {
     ) {
         let folder_vec_str: Vec<String> = folders
             .iter()
-            .filter_map(|f| {
-                if let Some(path) = f.to_str() {
-                    Some(format!("R {}", path))
-                } else {
-                    None
-                }
-            })
+            .filter_map(|f| f.to_str().map(|path| format!("R {}", path)))
             .collect();
         let folders_str = folder_vec_str.join("\n");
 
@@ -434,7 +431,7 @@ fn main() {
 #[cfg(test)]
 mod test {
     use std::{
-        fs::{self, DirEntry},
+        fs::{self},
         io,
         path::{Path, PathBuf},
         str::FromStr,
@@ -452,7 +449,7 @@ mod test {
             local::{LocalBackup, LocalFolder},
             ssh::{SSHBackup, SSHFolder},
         },
-        utils::folder::{BackupGroup, BackupType, Folder, FolderEntry},
+        utils::folder::{BackupGroup, BackupType, FolderEntry},
         Borg, Password, PasswordOptions, PlainPassword, PruneSettings, Repositories, Repository,
         RepositoryOptions,
     };

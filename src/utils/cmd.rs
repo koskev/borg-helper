@@ -2,6 +2,7 @@ use std::process::{Command, Output, Stdio};
 
 use log::info;
 
+#[allow(dead_code)]
 pub fn run_cmd(cmd: &str) -> Output {
     info!("Calling \"{}\"", cmd);
     let output = Command::new("sh")
@@ -33,6 +34,7 @@ pub fn run_cmd_inherit(cmd: &str) -> Output {
     output
 }
 
+#[allow(dead_code)]
 pub fn spawn_cmd_inherit(cmd: &str) -> Result<std::process::Child, std::io::Error> {
     info!("Spawning piped \"{}\"", cmd);
     let output = Command::new("sh")
