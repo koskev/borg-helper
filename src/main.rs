@@ -406,7 +406,7 @@ impl Display for BackupSize {
                     .get_appropriate_unit(byte_unit::UnitType::Binary);
                 write!(f, "\n\t {}: {}", path, size_str)?;
             }
-            write!(f, "\n")?;
+            writeln!(f)?;
         }
         Ok(())
     }
