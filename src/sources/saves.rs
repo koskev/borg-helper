@@ -37,6 +37,8 @@ struct GameSettings {
 struct SaveBackup {
     #[serde(default)]
     pub games: Vec<GameSettings>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 #[typetag::serde(name = "saves")]
@@ -67,12 +69,12 @@ impl BackupType for SaveBackup {
                 ApiGame::Operative { files } => {
                     let mut entries = vec![];
                     let paths = files.keys().cloned().collect::<Vec<String>>();
-                    let mut tags = vec![];
+                    let mut tags = self.tags.clone();
                     // search for custom game options
                     // TODO: allow for regex/wildcard
                     if let Some(game_settings) = self.games.iter().find(|f| f.name == *name) {
                         // we got an entry for the specified game
-                        tags = game_settings.tags.clone();
+                        tags.append(&mut game_settings.tags.clone());
                     }
 
                     for path in paths {
@@ -106,5 +108,30 @@ mod test {
         let back = SaveBackup::default();
         let folders = back.get_folders();
         assert_ge!(folders.len(), 1);
+    }
+
+    #[test]
+    // FIXME: Requires stardew valley for now
+    fn test_tags() {
+        let back = SaveBackup {
+            games: vec![GameSettings {
+                name: "Stardew Valley".to_string(),
+                tags: vec!["local_tag".to_string()],
+            }],
+            tags: vec!["global_tag".to_string()],
+        };
+        let folders = back.get_folders();
+        assert_ge!(folders.len(), 1);
+
+        assert!(folders
+            .iter()
+            .all(|entry| entry.tags.contains(&"global_tag".to_string())));
+        assert!(folders.iter().any(|entry| entry
+            .folder
+            .get_path()
+            .to_str()
+            .unwrap()
+            .contains("StardewValley")
+            && entry.tags.contains(&"local_tag".to_string())));
     }
 }
