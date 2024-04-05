@@ -23,7 +23,7 @@ jobs:
     - name: Start ssh service
       run: sudo service ssh restart
     - name: Install ludusavi
-      run: cargo install ludusavi
+      run: cargo install --locked ludusavi
     - name: "Create fake game"
       run: mkdir -p "$HOME/.config/StardewValley/Saves/" && touch "$HOME/.config/StardewValley/Saves/steam_autocloud.vdf"
     - name: Build
