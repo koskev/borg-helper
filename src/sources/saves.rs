@@ -39,6 +39,9 @@ struct SaveBackup {
     pub games: Vec<GameSettings>,
     #[serde(default)]
     tags: Vec<String>,
+
+    /// Custom path to ludusavi binary
+    binary: Option<String>,
 }
 
 #[typetag::serde(name = "saves")]
@@ -56,8 +59,9 @@ impl BackupType for SaveBackup {
     }
 
     fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>> {
-        // Call ludusavi
-        let output = run_cmd_checked("ludusavi backup --preview --api").unwrap();
+        let binary = self.binary.clone().unwrap_or("ludusavi".to_string());
+
+        let output = run_cmd_checked(&format!("{} backup --preview --api", binary)).unwrap();
         let output_str = String::from_utf8(output.stdout).unwrap_or_default();
 
         let json_data: JsonOutput = serde_yaml::from_str(&output_str).unwrap();
