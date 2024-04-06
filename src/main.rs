@@ -100,12 +100,6 @@ impl Password for PasswordOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct ConditionalExclude {
-    triggers: Vec<String>,
-    excludes: Vec<String>,
-}
-
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct Repository {
     path: String,
@@ -266,8 +260,6 @@ struct Borg {
 
     #[serde(default)]
     excludes: Vec<String>,
-    #[serde(default)]
-    conditional_excludes: Vec<ConditionalExclude>,
 
     #[serde(skip)]
     date: DateTime<Local>,

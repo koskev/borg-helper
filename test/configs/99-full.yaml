@@ -14,12 +14,6 @@ backups:
         - important
 excludes:
 - '*.fit'
-conditional_excludes:
-  - triggers:
-    - "Cargo.toml"
-    excludes:
-    - "target"
-
 repository:
   options:
     cmdline: -v --stats -p -C lzma
