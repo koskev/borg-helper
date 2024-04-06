@@ -123,6 +123,7 @@ mod test {
                 tags: vec!["local_tag".to_string()],
             }],
             tags: vec!["global_tag".to_string()],
+            binary: None,
         };
         let folders = back.get_folders();
         assert_ge!(folders.len(), 1);
