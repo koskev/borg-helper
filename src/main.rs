@@ -8,7 +8,8 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Local};
 use clap::Parser;
-use log::{debug, info, warn, LevelFilter};
+use etcetera::{choose_base_strategy, BaseStrategy};
+use log::{debug, error, info, warn, LevelFilter};
 use mktemp::Temp;
 use secstr::SecUtf8;
 use serde::Deserialize;
@@ -418,8 +419,8 @@ struct Cli {
     #[arg(short, long)]
     show_size: bool,
 
-    #[arg(short, long, default_value = "config.yaml")]
-    config: String,
+    #[arg(short, long)]
+    config: Option<String>,
 }
 
 fn main() {
@@ -431,14 +432,47 @@ fn main() {
     )
     .unwrap();
     let cli = Cli::parse();
-    let borg = Borg::from_file(&cli.config);
-    debug!("{:?}", borg);
-    if cli.show_size {
-        let sizes = borg.get_sizes();
-        println!("{}", sizes);
+
+    let xdg_config = choose_base_strategy()
+        .map(|s| s.config_dir())
+        .unwrap()
+        .join("borg_helper/config.yaml");
+    let config_file_list = vec![
+        "config.yaml".into(),
+        xdg_config,
+        "/etc/borg_helper/config.yaml".into(),
+    ];
+    let mut config_file = None;
+
+    if let Some(user_config) = cli.config {
+        if PathBuf::from(&user_config).exists() {
+            config_file = Some(user_config);
+        } else {
+            // Abort if user provided config does not exist
+            error!("Provided file {} does not exist!", user_config);
+            return;
+        }
     } else {
-        borg.backup_create();
-        borg.backup_prune();
+        for config in config_file_list {
+            if config.exists() {
+                config_file = Some(config.to_str().unwrap().to_string());
+                break;
+            }
+        }
+    }
+
+    if let Some(config_file) = config_file {
+        let borg = Borg::from_file(&config_file);
+        debug!("{:?}", borg);
+        if cli.show_size {
+            let sizes = borg.get_sizes();
+            println!("{}", sizes);
+        } else {
+            borg.backup_create();
+            borg.backup_prune();
+        }
+    } else {
+        error!("Could not find any config file! Aborting!");
     }
 }
 
