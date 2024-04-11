@@ -7,14 +7,14 @@ use std::{
     process::Child,
 };
 
-use log::{debug, error, info};
-use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
+use log::{error, info};
 use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
 
 use crate::utils::{
-    cmd::{run_cmd, run_cmd_background},
+    cmd::run_cmd,
     folder::{BackupType, Folder, FolderEntry},
+    k8s::start_k8s_proxy,
     mountable::Mountable,
 };
 
@@ -32,25 +32,6 @@ struct PsqlBackup {
     proxy_process: RefCell<Option<Child>>,
 }
 
-fn is_port_listening(port: u16) -> bool {
-    let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
-    let proto_flags = ProtocolFlags::TCP;
-    let sockets_info = get_sockets_info(af_flags, proto_flags);
-    debug!("Checking if port {port} is listening");
-    match sockets_info {
-        Ok(sockets_info) => {
-            let sockets = sockets_info.iter().find(|s| match &s.protocol_socket_info {
-                ProtocolSocketInfo::Tcp(tcp) => {
-                    tcp.state == TcpState::Listen && tcp.local_port == port
-                }
-                _ => false,
-            });
-            sockets.is_some()
-        }
-        Err(_) => false,
-    }
-}
-
 impl Mountable for PsqlBackup {
     fn mount(&self) -> bool {
         // If host is not set we assume localhost (or k8s)
@@ -58,35 +39,8 @@ impl Mountable for PsqlBackup {
         // Create proxy connection
         match &self.k8s_deployment {
             Some(deployment) => {
-                info!("Starting proxy...");
-                let cmd = format!(
-                    "kubectl port-forward {} {}:{}",
-                    deployment, self.port, self.port
-                );
-                let child = run_cmd_background(&cmd);
-                match child {
-                    Ok(mut child) => {
-                        // Wait for proxy to run
-                        while !is_port_listening(self.port) {
-                            // Check if child returned or threw an error. If not -> Program is
-                            // still running and we can wait for the port
-                            let child_ret = child.try_wait();
-                            match child_ret {
-                                Ok(ret) => {
-                                    if ret.is_some() {
-                                        return false;
-                                    }
-                                }
-                                Err(_) => return false,
-                            }
-                        }
-                        *self.proxy_process.borrow_mut() = Some(child)
-                    }
-                    Err(e) => {
-                        error!("Failed to create k8s proxy: {}", e);
-                        return false;
-                    }
-                }
+                *self.proxy_process.borrow_mut() =
+                    start_k8s_proxy("default", &deployment, self.port, self.port)
             }
             None => (),
         }
