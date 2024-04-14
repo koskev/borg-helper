@@ -1,4 +1,10 @@
-use std::{error::Error, fs, os::unix::fs::MetadataExt, path::PathBuf, str::FromStr};
+use std::{
+    error::Error,
+    fs,
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, PickFirst};
@@ -9,6 +15,17 @@ use crate::utils::folder::{BackupType, Folder, FolderEntry};
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct LocalFolder {
     pub(crate) path: PathBuf,
+}
+
+impl LocalFolder {
+    pub fn new<P>(path: P) -> Self
+    where
+        P: AsRef<Path>,
+    {
+        Self {
+            path: PathBuf::from(path.as_ref()),
+        }
+    }
 }
 
 fn get_path_size(path: PathBuf) -> Result<u64, Box<dyn Error>> {
