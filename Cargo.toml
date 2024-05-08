@@ -19,7 +19,7 @@ more-asserts = "0.3.1"
 netstat2 = "0.9.1"
 rpassword = "7.3.1"
 secstr = { version = "0.5.1", features = ["serde"] }
-serde = { version = "1.0.200", features = ["derive"] }
+serde = { version = "1.0.201", features = ["derive"] }
 serde_with = "3.8.1"
 serde_yaml = "0.9.34"
 simplelog = "0.12.2"
