@@ -110,6 +110,14 @@ struct Repository {
     options: RepositoryOptions,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum BackupStatus {
+    Success,
+    InvalidRepo,
+    Failure,
+    EmptySource,
+}
+
 impl Repository {
     fn merge_options(&mut self, options: &RepositoryOptions) {
         self.options = self.options.merge(options);
@@ -144,45 +152,52 @@ impl Repository {
 
     fn backup_create(
         &self,
-        backup_source_groups: &[BackupGroup],
+        backup_source: &BackupGroup,
         excludes: &[String],
         date: &DateTime<Local>,
-    ) {
+    ) -> BackupStatus {
         self.export_password();
         if self.is_valid() {
+            let mut retval = BackupStatus::Failure;
             info!("Processing {}", self.path);
-            for backup_source in backup_source_groups {
-                info!("Processing source {}", backup_source.name);
-                let mut folders = backup_source.r#type.get_folders();
-                if !self.tags.is_empty() {
-                    folders.retain(|f| self.tags.iter().any(|item| f.tags.contains(item)));
-                }
-                if backup_source.r#type.pre_backup() {
-                    let paths: Vec<PathBuf> = folders.iter().map(|f| f.folder.get_path()).collect();
-                    info!("Backing up folders {:?}", paths);
-                    // Create Backup
-                    if !folders.is_empty() {
-                        Borg::_backup_create(
-                            &format!(
-                                "{} {}",
-                                backup_source.r#type.get_additional_options(),
-                                &self.options.cmdline.clone().unwrap_or_default()
-                            ),
-                            &self.path,
-                            &format!(
-                                "{}-{}",
-                                backup_source.r#type.get_hostname(),
-                                date.to_rfc3339()
-                            ),
-                            &paths,
-                            excludes,
-                        )
-                    }
-                }
-                backup_source.r#type.post_backup();
+            info!("Processing source {}", backup_source.name);
+            let mut folders = backup_source.r#type.get_folders();
+            if !self.tags.is_empty() {
+                folders.retain(|f| self.tags.iter().any(|item| f.tags.contains(item)));
             }
+            if backup_source.r#type.pre_backup() {
+                let paths: Vec<PathBuf> = folders.iter().map(|f| f.folder.get_path()).collect();
+                debug!("Backing up folders {:?}", paths);
+                // Create Backup
+                if !folders.is_empty() {
+                    let status = Borg::_backup_create(
+                        &format!(
+                            "{} {}",
+                            backup_source.r#type.get_additional_options(),
+                            &self.options.cmdline.clone().unwrap_or_default()
+                        ),
+                        &self.path,
+                        &format!(
+                            "{}-{}",
+                            backup_source.r#type.get_hostname(),
+                            date.to_rfc3339()
+                        ),
+                        &paths,
+                        excludes,
+                    );
+                    retval = match status {
+                        true => BackupStatus::Success,
+                        false => BackupStatus::Failure,
+                    }
+                } else {
+                    retval = BackupStatus::EmptySource
+                }
+            }
+            backup_source.r#type.post_backup();
+            retval
         } else {
             warn!("Skipping repo {}", self.path);
+            BackupStatus::InvalidRepo
         }
     }
 
@@ -196,11 +211,11 @@ impl Repository {
                 //let mut keep_vec = vec![];
                 let prune_options = self.options.prune.clone().unwrap_or_default();
                 let cmd = format!("borg prune --list --stats -v --keep-daily={} --keep-weekly={} --keep-monthly={} --keep-yearly={} --glob-archives '{prefix}*' {}",
-                                  prune_options.daily.unwrap_or_default(),
-                                  prune_options.weekly.unwrap_or_default(),
-                                  prune_options.monthly.unwrap_or_default(),
-                                  prune_options.yearly.unwrap_or_default(), self.path
-                                 );
+                    prune_options.daily.unwrap_or_default(),
+                    prune_options.weekly.unwrap_or_default(),
+                    prune_options.monthly.unwrap_or_default(),
+                    prune_options.yearly.unwrap_or_default(), self.path
+                );
                 run_cmd_piped(&cmd);
             }
         });
@@ -291,8 +306,41 @@ impl Borg {
     }
 
     fn backup_create(&self) {
+        let mut failed_repos = vec![];
+        let mut failed_sources = vec![];
         for repo in &self.repository.repositories {
-            repo.backup_create(&self.backups, &self.excludes, &self.date);
+            if repo.is_valid() {
+                for backup_source in &self.backups {
+                    let status = repo.backup_create(backup_source, &self.excludes, &self.date);
+                    if status != BackupStatus::Success {
+                        failed_sources.push((repo, backup_source, status));
+                    }
+                }
+            } else {
+                failed_repos.push(repo);
+            }
+        }
+        if !failed_repos.is_empty() {
+            let repos_str = failed_repos
+                .iter()
+                .map(|r| r.path.as_str())
+                .collect::<Vec<&str>>()
+                .join("\n\t");
+            error!(
+                "Unable to backup to the following repositories: \n\t{}",
+                repos_str
+            );
+        }
+        if !failed_sources.is_empty() {
+            let sources_str = failed_sources
+                .iter()
+                .map(|(repo, source, status)| {
+                    format!("\t {}: {} ({:?})", repo.path.as_str(), source.name, status)
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            error!("Unable to backup the following sources: \n{}", sources_str);
         }
     }
 
@@ -323,7 +371,7 @@ impl Borg {
         name: &str,
         folders: &[PathBuf],
         excludes: &[String],
-    ) {
+    ) -> bool {
         let folder_vec_str: Vec<String> = folders
             .iter()
             .filter_map(|f| f.to_str().map(|path| format!("R {}", path)))
@@ -341,7 +389,8 @@ impl Borg {
         drop(f);
 
         let cmd = format!("borg create {options} {repo}::{name} {folder_exclude_str} --exclude-if-present .nobackup --exclude-if-present CACHEDIR.TAG --patterns-from {}", folder_file.to_str().unwrap());
-        run_cmd_inherit(&cmd);
+        let output = run_cmd_inherit(&cmd);
+        output.status.success()
     }
 
     fn get_sizes(&self) -> BackupSize {
@@ -417,7 +466,7 @@ struct Cli {
 
 fn main() {
     TermLogger::init(
-        LevelFilter::Trace,
+        LevelFilter::Info,
         Config::default(),
         TerminalMode::Stdout,
         ColorChoice::Auto,
