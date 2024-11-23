@@ -16,7 +16,7 @@ include_dir = "0.7.3"
 log = "0.4.21"
 mktemp = "0.5.1"
 more-asserts = "0.3.1"
-netstat2 = "0.9.1"
+netstat2 = "0.11.0"
 rpassword = "7.3.1"
 secstr = { version = "0.5.1", features = ["serde"] }
 serde = { version = "1.0.201", features = ["derive"] }
