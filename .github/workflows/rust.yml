@@ -2,33 +2,32 @@ name: Rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: sudo apt-get install -y borgbackup openssh-server libglib2.0-dev libgtk-3-dev
+      - name: Build
+        run: cargo build --verbose
 
-    ### Test stuff ###
-    - name: Install dependencies
-      run: sudo apt-get install -y borgbackup openssh-server
-    - name: Generate ssh key and add to authorized
-      run: ssh-keygen -t ed25519 -q -f "$HOME/.ssh/id_rsa" -N "" && cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys
-    - name: Start ssh service
-      run: sudo service ssh restart
-    - name: Install ludusavi
-      run: cargo install --locked ludusavi
-    - name: "Create fake game"
-      run: mkdir -p "$HOME/.config/StardewValley/Saves/" && touch "$HOME/.config/StardewValley/Saves/steam_autocloud.vdf"
-    - name: Run tests
-      run: cargo test --verbose
+      ### Test stuff ###
+      - name: Generate ssh key and add to authorized
+        run: ssh-keygen -t ed25519 -q -f "$HOME/.ssh/id_rsa" -N "" && cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys
+      - name: Start ssh service
+        run: sudo service ssh restart
+      - name: Install ludusavi
+        run: cargo install --locked ludusavi
+      - name: "Create fake game"
+        run: mkdir -p "$HOME/.config/StardewValley/Saves/" && touch "$HOME/.config/StardewValley/Saves/steam_autocloud.vdf"
+      - name: Run tests
+        run: cargo test --verbose
