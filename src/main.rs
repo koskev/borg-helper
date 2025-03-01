@@ -177,11 +177,7 @@ impl Repository {
                             &self.options.cmdline.clone().unwrap_or_default()
                         ),
                         &self.path,
-                        &format!(
-                            "{}-{}",
-                            backup_source.r#type.get_hostname(),
-                            date.to_rfc3339()
-                        ),
+                        &format!("{}-{}", backup_source.name, date.to_rfc3339()),
                         &paths,
                         excludes,
                     );
@@ -202,10 +198,7 @@ impl Repository {
     }
 
     fn backup_prune(&self, backup_groups: &[BackupGroup]) {
-        let prefixes: Vec<String> = backup_groups
-            .iter()
-            .map(|b| b.r#type.get_hostname())
-            .collect();
+        let prefixes: Vec<String> = backup_groups.iter().map(|b| b.name.clone()).collect();
         prefixes.iter().for_each(|prefix| {
             if self.is_valid() {
                 //let mut keep_vec = vec![];

@@ -54,10 +54,6 @@ impl BackupType for SaveBackup {
         true
     }
 
-    fn get_hostname(&self) -> String {
-        format!("{}-games", hostname::get().unwrap().to_str().unwrap())
-    }
-
     fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>> {
         let binary = self.binary.clone().unwrap_or("ludusavi".to_string());
 

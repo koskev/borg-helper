@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 pub trait BackupType: Debug {
     fn pre_backup(&self) -> bool;
     fn post_backup(&self) -> bool;
-    fn get_hostname(&self) -> String;
     // TODO: I don't like this. Just returning a Vec<impl Folder> would be nice
     // Vec<Box<dyn Folder>> won't work as well :/
     fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>>;

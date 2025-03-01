@@ -72,8 +72,10 @@ impl Mountable for InfluxdbBackup {
     }
 
     fn get_mount_path(&self) -> String {
-        let name = self.get_hostname();
-        format!("/tmp/backup/{}", name)
+        format!(
+            "/tmp/backup/influxdb-{}",
+            self.host.clone().unwrap_or("nohost".into())
+        )
     }
 }
 
@@ -85,14 +87,6 @@ impl BackupType for InfluxdbBackup {
 
     fn post_backup(&self) -> bool {
         self.unmount()
-    }
-
-    fn get_hostname(&self) -> String {
-        self.host.clone().unwrap_or(
-            self.k8s_deployment
-                .clone()
-                .unwrap_or("psql_back".to_string()),
-        )
     }
 
     fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>> {

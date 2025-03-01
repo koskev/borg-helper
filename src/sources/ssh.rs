@@ -52,15 +52,6 @@ impl BackupType for SSHBackup {
         self.unmount()
     }
 
-    fn get_hostname(&self) -> String {
-        let host = self.target.split_once('@');
-        match host {
-            Some((_user, hostname)) => hostname.to_string(),
-            // Probably an ssh shortcut
-            None => self.target.clone(),
-        }
-    }
-
     fn get_additional_options(&self) -> String {
         String::from("--files-cache ctime,size")
     }

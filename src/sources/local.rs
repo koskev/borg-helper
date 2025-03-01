@@ -95,10 +95,6 @@ impl BackupType for LocalBackup {
         true
     }
 
-    fn get_hostname(&self) -> String {
-        hostname::get().unwrap().to_str().unwrap().to_string()
-    }
-
     fn get_folders(&self) -> Vec<FolderEntry<Box<dyn Folder>>> {
         let mut v: Vec<FolderEntry<Box<dyn Folder>>> = vec![];
         for f in &self.folders {
